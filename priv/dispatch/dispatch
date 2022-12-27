@@ -1,0 +1,7 @@
+[
+    {paysub_stripe_webhook, [ "subscription", "stripe", "webhook" ], controller_paysub_stripe_webhook, []},
+
+    {paysub_psp_done, [ "payment", "done", checkout_nr ], controller_template,
+        [ {template, "paysub_psp_done.tpl"} ]}
+
+].

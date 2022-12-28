@@ -46,6 +46,11 @@
 -export([
     m_get/3,
 
+    is_allowed_paysub/1,
+
+    search_query/4,
+    count_invoices/1,
+
     user_groups/2,
     user_subscriptions/2,
     user_customers/2,
@@ -92,79 +97,264 @@ m_get([ <<"checkout">>, <<"status">>, CheckoutNr | Rest ], _Msg, Context) ->
             {ok, {Status, Rest}};
         {error, _} = Error ->
             Error
+    end;
+m_get([ <<"invoice">>, Id | Rest ], _Msg, Context) ->
+    InvId = z_convert:to_integer(Id),
+    Res = case is_allowed_paysub(Context) of
+        true ->
+            get_invoice(InvId, Context);
+        false ->
+            get_user_invoice(z_acl:user(Context), InvId, Context)
+    end,
+    case Res of
+        {ok, Inv} ->
+            {ok, {Inv, Rest}};
+        {error, _} = Error ->
+            Error
+    end;
+m_get([ <<"rsc">>, RscId, <<"invoices">>, <<"count">> | Rest ], _Msg, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        RId ->
+            UserId = z_acl:user(Context),
+            case is_allowed_paysub(Context) of
+                true ->
+                    {ok, {count_user_invoices(RId, Context), Rest}};
+                false when RId =:= UserId ->
+                    {ok, {count_user_invoices(RId, Context), Rest}};
+                false ->
+                    {error, eacces}
+            end
+    end;
+m_get([ <<"rsc">>, RscId, <<"invoices">>, <<"list">> | Rest ], _Msg, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        RId ->
+            UserId = z_acl:user(Context),
+            Res = case is_allowed_paysub(Context) of
+                true ->
+                    user_invoices(RId, Context);
+                false when RId =:= UserId ->
+                    user_invoices(RId, Context);
+                false ->
+                    {error, eacces}
+            end,
+            case Res of
+                {ok, Invs} ->
+                    {ok, {Invs, Rest}};
+                {error, _} = Error ->
+                    Error
+            end
     end.
+
+is_allowed_paysub(Context) ->
+    z_acl:is_admin(Context) orelse z_acl:is_allowed(use, mod_paysub, Context).
+
+search_query(invoices, #{ rsc_id := undefined }, {Offset, Limit}, Context) ->
+    {ok, Result} = z_db:qmap_props("
+        select inv.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email
+        from paysub_invoice inv
+            left join paysub_customer cust
+            on inv.psp = cust.psp
+            and inv.psp_customer_id = cust.psp_customer_id
+        order by inv.created desc, id desc
+        offset $1 limit $2
+        ",
+        [ Offset-1, Limit ],
+        Context),
+    #search_result{
+        result = Result,
+        total = count_invoices(Context),
+        is_total_estimated = false
+    };
+search_query(invoices, #{ rsc_id := UserId }, {Offset, Limit}, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            #search_result{
+                result = [],
+                total = 0,
+                is_total_estimated = false
+            };
+        RscId ->
+            {ok, Result} = z_db:qmap_props("
+                select inv.*,
+                       cust.id as customer_id,
+                       cust.rsc_id as rsc_id,
+                       cust.email as email
+                from paysub_invoice inv
+                    join paysub_customer cust
+                    on inv.psp = cust.psp
+                    and inv.psp_customer_id = cust.psp_customer_id
+                where cust.rsc_id = $3
+                order by inv.created desc, id desc
+                offset $1 limit $2
+                ",
+                [ Offset-1, Limit, RscId ],
+                Context),
+            #search_result{
+                result = Result,
+                total = count_user_invoices(RscId, Context),
+                is_total_estimated = false
+            }
+    end.
+
+%% @doc Count all invoices
+-spec count_invoices(Context) -> Count when
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_invoices(Context) ->
+    z_db:q1("select count(*) from paysub_invoice", Context).
+
+%% @doc Count all invoices for an user
+-spec count_user_invoices(UserId, Context) -> Count when
+    UserId :: m_rsc:resource(),
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_user_invoices(UserId, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            0;
+        RscId ->
+            z_db:q1("
+                select count(*)
+                from paysub_invoice inv
+                    join paysub_customer cust
+                    on inv.psp = cust.psp
+                    and inv.psp_customer_id = cust.psp_customer_id
+                where cust.rsc_id = $1
+                ", [RscId], Context)
+    end.
+
 
 %% @doc Return the list of user groups the user has subscriptions for.
 %% Status can be: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid
 %% Only 'unpaid' and 'canceled' are considered inactive subscriptions.
 -spec user_groups( m_rsc:resource_id(), z:context() ) -> [ m_rsc:resource_id() ].
-user_groups(UserId, Context) ->
-    Ids = z_db:q("
-        select distinct prod.user_group_id
-        from paysub_product prod
-            join paysub_subscription_item item
-            and prod.psp_product_id = item.psp_product_id
-            join paysub_subscription sub
-            on sub.id = item.subscription_id
-            and sub.psp = prod.psp
-        where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
-          and sub.rsc_id = $1
-          and prod.user_group_id is not null
-        ", [ UserId ], Context),
-    [ Id || {Id} <- Ids ].
+user_groups(UserId0, Context) ->
+    case m_rsc:rid(UserId0, Context) of
+        undefined ->
+            [];
+        UserId ->
+            Ids = z_db:q("
+                select distinct prod.user_group_id
+                from paysub_product prod
+                    join paysub_subscription_item item
+                    and prod.psp_product_id = item.psp_product_id
+                    join paysub_subscription sub
+                    on sub.id = item.subscription_id
+                    and sub.psp = prod.psp
+                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                  and sub.rsc_id = $1
+                  and prod.user_group_id is not null
+                ", [ UserId ], Context),
+            [ Id || {Id} <- Ids ]
+    end.
 
 
 %% @doc Return the complete list of subscriptions for an user.
-user_subscriptions(UserId, Context) ->
-    {ok, Subs} = z_db:qmap_props("
-        select *
-        from paysub_subscription
-        where rsc_id = $1
-        order by period_end desc, created desc",
-        [ UserId ],
-        Context),
-    Subs1 = lists:map(
-        fun(#{ <<"id">> := Id, <<"psp">> := PSP } = Sub) ->
-            {ok, Prices} = z_db:qmap_props("
+user_subscriptions(UserId0, Context) ->
+    case m_rsc:rid(UserId0, Context) of
+        undefined ->
+            {error, enoent};
+        UserId ->
+            {ok, Subs} = z_db:qmap_props("
                 select *
-                from paysub_price price
-                    left join paysub_subscription_item item
-                    on price.psp_price_id = item.psp_price_id
-                    and price.psp = $1
-                    left join paysub_product prod
-                    on prod.psp = price.psp
-                    and prod.psp_product_id = price.psp_product_id
-                where item.subscription_id = $2
-                ",
-                [ PSP, Id ],
+                from paysub_subscription
+                where rsc_id = $1
+                order by period_end desc, created desc",
+                [ UserId ],
                 Context),
-            Sub#{
-                <<"items">> => Prices
-            }
-        end,
-        Subs),
-    {ok, Subs1}.
+            Subs1 = lists:map(
+                fun(#{ <<"id">> := Id, <<"psp">> := PSP } = Sub) ->
+                    {ok, Prices} = z_db:qmap_props("
+                        select *
+                        from paysub_price price
+                            left join paysub_subscription_item item
+                            on price.psp_price_id = item.psp_price_id
+                            and price.psp = $1
+                            left join paysub_product prod
+                            on prod.psp = price.psp
+                            and prod.psp_product_id = price.psp_product_id
+                        where item.subscription_id = $2
+                        ",
+                        [ PSP, Id ],
+                        Context),
+                    Sub#{
+                        <<"items">> => Prices
+                    }
+                end,
+                Subs),
+            {ok, Subs1}
+    end.
 
-user_customers(UserId, Context) ->
-    z_db:qmap_props("
-        select *
-        from paysub_customer
-        where rsc_id = $1
-        order by created desc",
-        [ UserId ],
-        Context).
+user_customers(UserId0, Context) ->
+    case m_rsc:rid(UserId0, Context) of
+        undefined ->
+            {error, enoent};
+        UserId ->
+            z_db:qmap_props("
+                select *
+                from paysub_customer
+                where rsc_id = $1
+                order by created desc",
+                [ UserId ],
+                Context)
+    end.
 
-user_invoices(UserId, Context) ->
-    z_db:qmap_props("
-        select inv.*
+user_invoices(UserId0, Context) ->
+    case m_rsc:rid(UserId0, Context) of
+        undefined ->
+            {error, enoent};
+        UserId ->
+            z_db:qmap_props("
+                select inv.*,
+                       cust.id as customer_id,
+                       cust.rsc_id as rsc_id,
+                       cust.email as email
+                from paysub_invoice inv
+                    left join paysub_customer cust
+                    on inv.psp = cust.psp
+                    and inv.psp_customer_id = cust.psp_customer_id
+                where cus.rsc_id = $1
+                order by inv.created desc, id desc",
+                [ UserId ],
+                Context)
+    end.
+
+get_invoice(InvoiceId, Context) ->
+    z_db:qmap_props_row("
+        select inv.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email
         from paysub_invoice inv
-            join paysub_customer cus
-            on cus.psp = inv.psp
-            and cus.psp_customer_id = inv.psp_customer_id
-        where cus.rsc_id = $1
-        order by inv.created desc",
-        [ UserId ],
+            left join paysub_customer cust
+            on inv.psp = cust.psp
+            and inv.psp_customer_id = cust.psp_customer_id
+        where inv.id = $1",
+        [ InvoiceId ],
         Context).
+
+get_user_invoice(UserId, InvoiceId, Context) ->
+    z_db:qmap_props_row("
+        select inv.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email
+        from paysub_invoice inv
+            join paysub_customer cust
+            on inv.psp = cust.psp
+            and inv.psp_customer_id = cust.psp_customer_id
+        where inv.id = $1
+          and cust.rsc_id = $2",
+        [ InvoiceId, UserId ],
+        Context).
+
 
 
 -spec checkout_status(CheckoutNr, Context) -> {ok, map()} | {error, term()} when
@@ -767,6 +957,7 @@ install_tables(Context) ->
 
     [] = z_db:q("CREATE INDEX fki_paysub_customer_rsc_id ON paysub_customer (rsc_id)", Context),
 
+    % payment_status is one of: draft, open, paid, uncollectible, or void
     [] = z_db:q("
         create table paysub_invoice (
             id serial not null,

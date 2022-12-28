@@ -27,12 +27,43 @@
 -author("Marc Worrell <marc@worrell.nl>").
 
 -export([
-    init/1,
+    observe_search_query/2,
+    observe_admin_menu/3,
 
+    init/1,
     manage_schema/2
 ]).
 
+-include_lib("zotonic_core/include/zotonic.hrl").
+-include_lib("zotonic_mod_admin/include/admin_menu.hrl").
+
 % -include_lib("kernel/include/logger.hrl").
+
+observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=OffsetLimit }, Context) ->
+    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+        true ->
+            Query = #{
+                rsc_id => proplists:get_value(rsc_id, Args)
+            },
+            m_paysub:search_query(invoices, Query, OffsetLimit, Context);
+        false ->
+            []
+    end;
+observe_search_query(#search_query{}, _Context) ->
+    undefined.
+
+observe_admin_menu(#admin_menu{}, Acc, Context) ->
+    [
+        #menu_item{
+            id=paysub_admin_invoices_overview,
+            parent = admin_modules,
+            label = ?__("Payments - Invoices", Context),
+            url = {paysub_admin_invoices_overview, []},
+            visiblecheck = {acl, use, mod_paysub}}
+        | Acc
+    ].
+
+
 
 init(Context) ->
     m_config:set_default_value(?MODULE, stripe_api_key, <<>>, Context),

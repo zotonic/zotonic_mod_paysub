@@ -1,24 +1,32 @@
-{% with m.paysub.invoice[q.invoice_id] as p %}
+{% with m.paysub.subscription[q.subscription_id] as p %}
     {% if p %}
         <table class="table">
             <tr>
                 <th>{_ Status _}</th>
                 <td>
-                    {% if p.payment_status == 'uncollectible' %}
+                    {% if p.status == 'unpaid' %}
                         <span class="label label-danger" style="font-size: 1.5rem">
-                            {{ p.payment_status|escape }}
+                            {{ p.status|escape }}
                         </span>
-                    {% elseif p.payment_status == 'void' %}
+                    {% elseif p.status == 'past_due' %}
                         <span class="label label-warning" style="font-size: 1.5rem">
-                            {{ p.payment_status|escape }}
+                            {{ p.status|escape }}
                         </span>
-                    {% elseif p.payment_status == 'paid' %}
+                    {% elseif p.status == 'incomplete' %}
+                        <span class="label label-info" style="font-size: 1.5rem">
+                            {{ p.status|escape }}
+                        </span>
+                    {% elseif p.status == 'active' %}
                         <span class="label label-success" style="font-size: 1.5rem">
-                            {{ p.payment_status|escape }}
+                            {{ p.status|escape }}
+                        </span>
+                    {% elseif p.status == 'trialing' %}
+                        <span class="label label-success" style="font-size: 1.5rem">
+                            {{ p.status|escape }}
                         </span>
                     {% else %}
                         <span class="label label-default" style="font-size: 1.5rem">
-                            {{ p.payment_status|escape }}
+                            {{ p.status|escape }}
                         </span>
                     {% endif %}
                     <span class="pull-right">{{ p.modified|date:"Y-m-d" }}
@@ -27,23 +35,31 @@
                 </td>
             </tr>
             <tr>
-                <th>{_ Amount _}</th>
+                <th>{_ Start _}</th>
                 <td>
-                    <h3 style="margin-top:0">{{ p.currency|replace:"EUR":"€"|escape }} {{ p.total|format_price }}</h3>
-                    <table class="table">
-                        <tr>
-                            <th>{_ Amount due _}</th>
-                            <th>{_ Amount paid _}</th>
-                            <th>{_ Amount remaining _}</th>
-                        </tr>
-                        <tr>
-                            <td>{{ p.amount_due|format_price }}</td>
-                            <td>{{ p.amount_paid|format_price }}</td>
-                            <td>{{ p.amount_remaining|format_price }}</td>
-                        </tr>
-                    </table>
+                    {% if p.started_at or p.ended_at %}
+                        {{ p.started_at|date:_"Y-m-d" }} <span class="text-muted">{{ p.started_at|date:"H:i"}}</span>
+                        &mdash;
+                        {% if p.ended_at %}
+                            {{ p.ended_at|date:_"Y-m-d" }} <span class="text-muted">{{ p.ended_at|date:"H:i"}}</span>
+                        {% else %}
+                            <span class="text-muted">{_ ongoing _}</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">{_ Not started _}</span>
+                    {% endif %}
                 </td>
             </tr>
+            {% if p.period_start or p.period_end %}
+                <tr>
+                    <th>{_ Period _}</th>
+                    <td>
+                        {{ p.period_start|date:"Y-m-d" }} <span class="text-muted">{{ p.period_start|date:"H:i"}}</span>
+                        &mdash;
+                        {{ p.period_end|date:"Y-m-d" }} <span class="text-muted">{{ p.periond_end|date:"H:i"}}</span>
+                    </td>
+                </tr>
+            {% endif %}
             <tr>
                 <th>{_ Name _}</th>
                 <td>
@@ -128,27 +144,21 @@
                         {% for item in p.items %}
                             <tr>
                                 <td>
-                                    {{ item.description|escape }}
+                                    {{ item.name|escape }}
                                 </td>
                                 <td>
-                                    {{ item.currency|replace:"EUR":"€"|escape }}&nbsp;{{ item.amount|format_price }}
-                                    {% if item.is_prorated %}
-                                        <br><span class="label label-default">{_ Prorated _}</span>
-                                    {% endif %}
+                                    {{ item.currency|replace:"EUR":"€"|escape }}&nbsp;{{ item.amount|format_price }}<br>
+                                    <span class="text-muted">
+                                        {% if item.is_recurring %}
+                                            {_ Recurring _} - {{ item.recurring_period|escape}}
+                                        {% endif %}
+                                    </span>
                                 </td>
                             </tr>
                         {% endfor %}
                     </table>
                 </td>
             </tr>
-            {% if p.period_start or p.period_end %}
-                <tr>
-                    <th>{_ Period _}</th>
-                    <td>
-                        {{ p.period_start|date:"Y-m-d" }} &ndash; {{ p.period_end|date:"Y-m-d" }}
-                    </td>
-                </tr>
-            {% endif %}
             <tr>
                 <th>{_ PSP _}</th>
                 <td>
@@ -161,7 +171,7 @@
                         </a>
                     {% else %}
                         {{ p.psp|escape }}
-                        <span class="text-muted">| {{ p.psp_invoice_id|escape }}</span>
+                        <span class="text-muted">| {{ p.psp_subscription_id|escape }}</span>
                     {% endif %}
                 </td>
             </tr>

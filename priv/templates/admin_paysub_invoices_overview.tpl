@@ -97,24 +97,44 @@
                                     {% if not forloop.last %}<br>{% endif %}
                                 {% endfor %}
                             </td>
-                            <td class="clickable">
-                                {% if inv.rsc_id %}
-                                    <a href="{% url admin_edit_rsc id=inv.rsc_id %}">
-                                        {% include "_name.tpl" id=inv.rsc_id %}
-                                    </a>
-                                {% else %}
-                                    {{ inv.name|escape }}
-                                {% endif %}
-                            </td>
-                            <td class="clickable">
-                                {% if inv.rsc_id %}
-                                    <a href="{% url admin_edit_rsc id=inv.rsc_id %}">
-                                        {{ inv.email|escape }}
-                                    </a>
-                                {% else %}
-                                    {{ inv.email|escape }}
-                                {% endif %}
-                            </td>
+                            {% with inv.rsc_id.o.hasmaincontact[1] as contact_id %}
+                                <td class="clickable">
+                                    {% if inv.rsc_id %}
+                                        <a href="{% url admin_edit_rsc id=inv.rsc_id %}">
+                                            {% include "_name.tpl" id=inv.rsc_id %}
+                                        </a>
+                                        {% if inv.rsc_id.o.hasmaincontact[1] as contact %}
+                                            <br><span class="glyphicon glyphicon-user"></span>
+                                            <a href="{% url admin_edit_rsc id=contact_id %}">
+                                                {% include "_name.tpl" id=contact_id %}
+                                            </a>
+                                        {% endif %}
+                                    {% else %}
+                                        {{ inv.name|escape }}
+                                    {% endif %}
+                                </td>
+                                <td class="clickable">
+                                    {% if inv.rsc_id %}
+                                        {% if sub.email|escape|default:inv.rsc_id.billing_email|default:inv.rsc_id.email as email %}
+                                            <a href="mailto:{{ email }}">
+                                                {{ email }}
+                                            </a><br>
+                                        {% endif %}
+                                        {% if inv.rsc_id.o.hasmaincontact[1] as contact %}
+                                            {% with contact_id.billing_email|default:contact_id.email as email %}
+                                                <span class="glyphicon glyphicon-user"></span>
+                                                <a href="mailto:{{ email }}">
+                                                    {{ email }}
+                                                </a>
+                                            {% endwith %}
+                                        {% endif %}
+                                    {% else %}
+                                        <a href="mailto:{{ inv.email|escape }}">
+                                            {{ inv.email|escape }}
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
                             <td class="clickable">
                                 {{ inv.psp|escape }}
                             </td>

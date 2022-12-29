@@ -10,7 +10,8 @@
 
 {% block widget_content %}
     <div class="form-group">
-        <a href="{% url paysub_admin_invoices_overview qrsc_id=id %}">{_ View invoices _}</a>
+        <a class="btn btn-default" href="{% url paysub_admin_invoices_overview qrsc_id=id %}">{_ View invoices _}</a>
+        <a class="btn btn-default" href="{% url paysub_admin_subscriptions_overview qrsc_id=id %}">{_ View subscriptions _}</a>
     </div>
 {% endblock %}
 

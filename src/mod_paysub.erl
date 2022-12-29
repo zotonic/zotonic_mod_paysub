@@ -49,6 +49,16 @@ observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=
         false ->
             []
     end;
+observe_search_query(#search_query{ search={paysub_subscriptions, Args}, offsetlimit=OffsetLimit }, Context) ->
+    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+        true ->
+            Query = #{
+                rsc_id => proplists:get_value(rsc_id, Args)
+            },
+            m_paysub:search_query(subscriptions, Query, OffsetLimit, Context);
+        false ->
+            []
+    end;
 observe_search_query(#search_query{}, _Context) ->
     undefined.
 
@@ -59,6 +69,12 @@ observe_admin_menu(#admin_menu{}, Acc, Context) ->
             parent = admin_modules,
             label = ?__("Payments - Invoices", Context),
             url = {paysub_admin_invoices_overview, []},
+            visiblecheck = {acl, use, mod_paysub}},
+        #menu_item{
+            id=paysub_admin_subscriptions_overview,
+            parent = admin_modules,
+            label = ?__("Payments - Subscriptions", Context),
+            url = {paysub_admin_subscriptions_overview, []},
             visiblecheck = {acl, use, mod_paysub}}
         | Acc
     ].

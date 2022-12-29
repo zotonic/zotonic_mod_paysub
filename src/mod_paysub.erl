@@ -27,6 +27,8 @@
 -author("Marc Worrell <marc@worrell.nl>").
 
 -export([
+    event/2,
+
     observe_search_query/2,
     observe_admin_menu/3,
 
@@ -38,6 +40,24 @@
 -include_lib("zotonic_mod_admin/include/admin_menu.hrl").
 
 % -include_lib("kernel/include/logger.hrl").
+
+event(#submit{ message = {product_update, Args} }, Context) ->
+    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+        true ->
+            {id, ProdId} = proplists:lookup(id, Args),
+            UGId = z_context:get_q(<<"user_group_id">>, Context),
+            IsActive = z_context:get_q(<<"is_active">>, Context),
+            Update = #{
+                is_active => z_convert:to_bool(IsActive),
+                user_group_id => m_rsc:rid(UGId, Context),
+                modified => calendar:universal_time()
+            },
+            m_paysub:update_product(ProdId, Update, Context),
+            OnSuccess = proplists:get_all_values(on_success, Args),
+            z_render:wire(OnSuccess, Context);
+        false ->
+            z_render:growl(?__("You are not allowed to edit products.", Context), Context)
+    end.
 
 observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=OffsetLimit }, Context) ->
     case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
@@ -53,9 +73,19 @@ observe_search_query(#search_query{ search={paysub_subscriptions, Args}, offsetl
     case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
         true ->
             Query = #{
-                rsc_id => proplists:get_value(rsc_id, Args)
+                rsc_id => proplists:get_value(rsc_id, Args),
+                price_id => proplists:get_value(price_id, Args),
+                product_id => proplists:get_value(product_id, Args)
             },
             m_paysub:search_query(subscriptions, Query, OffsetLimit, Context);
+        false ->
+            []
+    end;
+observe_search_query(#search_query{ search={paysub_products, _Args}, offsetlimit=OffsetLimit }, Context) ->
+    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+        true ->
+            Query = #{},
+            m_paysub:search_query(products, Query, OffsetLimit, Context);
         false ->
             []
     end;
@@ -75,6 +105,12 @@ observe_admin_menu(#admin_menu{}, Acc, Context) ->
             parent = admin_modules,
             label = ?__("Payments - Subscriptions", Context),
             url = {paysub_admin_subscriptions_overview, []},
+            visiblecheck = {acl, use, mod_paysub}},
+        #menu_item{
+            id=paysub_admin_products_overview,
+            parent = admin_modules,
+            label = ?__("Payments - Products", Context),
+            url = {paysub_admin_products_overview, []},
             visiblecheck = {acl, use, mod_paysub}}
         | Acc
     ].

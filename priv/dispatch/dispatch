@@ -6,5 +6,7 @@
     {paysub_admin_invoices_overview, [ "admin", "paysub", "invoices" ], controller_admin,
             [ {template, "admin_paysub_invoices_overview.tpl"} ]},
     {paysub_admin_subscriptions_overview, [ "admin", "paysub", "subscriptions" ], controller_admin,
-            [ {template, "admin_paysub_subscriptions_overview.tpl"} ]}
+            [ {template, "admin_paysub_subscriptions_overview.tpl"} ]},
+    {paysub_admin_products_overview, [ "admin", "paysub", "products" ], controller_admin,
+            [ {template, "admin_paysub_products_overview.tpl"} ]}
 ].

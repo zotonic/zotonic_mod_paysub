@@ -143,7 +143,7 @@
                 {% empty %}
                     <tr>
                         <td colspan="5">
-                            {_ No payments found. _}
+                            {_ No invoices found. _}
                         </td>
                     </tr>
                 {% endfor %}

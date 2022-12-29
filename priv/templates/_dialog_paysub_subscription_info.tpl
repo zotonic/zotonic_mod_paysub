@@ -56,7 +56,7 @@
                     <td>
                         {{ p.period_start|date:"Y-m-d" }} <span class="text-muted">{{ p.period_start|date:"H:i"}}</span>
                         &mdash;
-                        {{ p.period_end|date:"Y-m-d" }} <span class="text-muted">{{ p.periond_end|date:"H:i"}}</span>
+                        {{ p.period_end|date:"Y-m-d" }} <span class="text-muted">{{ p.period_end|date:"H:i"}}</span>
                     </td>
                 </tr>
             {% endif %}
@@ -148,11 +148,11 @@
                                 </td>
                                 <td>
                                     {{ item.currency|replace:"EUR":"€"|escape }}&nbsp;{{ item.amount|format_price }}<br>
-                                    <span class="text-muted">
+                                    <small class="text-muted">
                                         {% if item.is_recurring %}
                                             {_ Recurring _} - {{ item.recurring_period|escape}}
                                         {% endif %}
-                                    </span>
+                                    </small>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -178,7 +178,7 @@
         </table>
     {% else %}
         <p class="text-muted">
-            {_ Unknown invoice, or no permission to view this invoice. _}
+            {_ Unknown subscription, or no permission to view this subscription. _}
         </p>
     {% endif %}
 

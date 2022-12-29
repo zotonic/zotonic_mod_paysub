@@ -31,7 +31,13 @@
             </div>
         #}
 
-        {% with m.search.paged[{paysub_subscriptions rsc_id=q.qrsc_id page=q.page pagelen=20}] as result %}
+        {% with m.search.paged[{paysub_subscriptions
+                    rsc_id=q.qrsc_id
+                    price_id=q.qprice_id
+                    product_id=q.qproduct_id
+                    page=q.page
+                    pagelen=20
+            }] as result %}
             <table class="table table-striped do_adminLinkedTable" id="payments">
                 <thead>
                     <tr>
@@ -113,8 +119,11 @@
                                         {{ line.name|escape }}
                                         ({{ line.currency|replace:"EUR":"€" }}&nbsp;{{ line.amount|format_price }})
                                         <br>
-                                        <span class="text-muted">
-                                        {% if line.is_recurring %}{_ Recurring _} - {{ line.recurring_period|escape}}{% endif %}
+                                        <small class="text-muted">
+                                            {% if line.is_recurring %}
+                                                {_ Recurring _} - {{ line.recurring_period|escape}}
+                                            {% endif %}
+                                        </small>
                                     {% endfor %}
                                 </ul>
                             </td>
@@ -162,7 +171,7 @@
                 {% empty %}
                     <tr>
                         <td colspan="5">
-                            {_ No payments found. _}
+                            {_ No subscriptions found. _}
                         </td>
                     </tr>
                 {% endfor %}

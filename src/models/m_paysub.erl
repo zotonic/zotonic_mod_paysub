@@ -68,6 +68,7 @@
 
     sync_products/3,
     sync_product/3,
+    update_product/3,
     delete_product/3,
 
     sync_prices/3,
@@ -198,8 +199,20 @@ m_get([ <<"rsc">>, RscId, <<"subscriptions">>, <<"list">> | Rest ], _Msg, Contex
                 {error, _} = Error ->
                     Error
             end
+    end;
+m_get([ <<"product">>, Id | Rest ], _Msg, Context) ->
+    case is_allowed_paysub(Context) of
+        true ->
+            ProdId = z_convert:to_integer(Id),
+            case get_product(ProdId, Context) of
+                {ok, Prod} ->
+                    {ok, {Prod, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            {error, eacces}
     end.
-%% TODO: Add subscription APIs
 
 
 is_allowed_paysub(Context) ->
@@ -255,6 +268,67 @@ search_query(invoices, #{ rsc_id := UserId }, {Offset, Limit}, Context) ->
                 is_total_estimated = false
             }
     end;
+search_query(subscriptions, #{ product_id := ProdId }, {Offset, Limit}, Context) when
+        ProdId =/= <<>>, ProdId =/= undefined ->
+    ProdId1 = z_convert:to_integer(ProdId),
+    {ok, Subs} = z_db:qmap_props("
+        select sub.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email
+        from paysub_subscription sub
+            left join paysub_customer cust
+                on sub.psp = cust.psp
+                and sub.psp_customer_id = cust.psp_customer_id
+            join paysub_subscription_item item
+                on item.subscription_id = sub.id
+            join paysub_price price
+                on item.psp = price.psp
+                and item.psp_price_id = price.psp_price_id
+            join paysub_product product
+                on price.psp = product.psp
+                and price.psp_product_id = product.psp_product_id
+        where product.id = $3
+        order by sub.started_at desc, id desc
+        offset $1 limit $2
+        ",
+        [ Offset-1, Limit, ProdId1 ],
+        Context),
+    Subs1 = subscription_add_prices(Subs, Context),
+    #search_result{
+        result = Subs1,
+        total = count_product_subscriptions(ProdId1, Context),
+        is_total_estimated = false
+    };
+search_query(subscriptions, #{ price_id := PriceId }, {Offset, Limit}, Context) when
+        PriceId =/= <<>>, PriceId =/= undefined ->
+    PriceId1 = z_convert:to_integer(PriceId),
+    {ok, Subs} = z_db:qmap_props("
+        select sub.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email
+        from paysub_subscription sub
+            left join paysub_customer cust
+                on sub.psp = cust.psp
+                and sub.psp_customer_id = cust.psp_customer_id
+            join paysub_subscription_item item
+                on item.subscription_id = sub.id
+            join paysub_price price
+                on item.psp = price.psp
+                and item.psp_price_id = price.psp_price_id
+        where price.id = $3
+        order by sub.started_at desc, id desc
+        offset $1 limit $2
+        ",
+        [ Offset-1, Limit, PriceId1 ],
+        Context),
+    Subs1 = subscription_add_prices(Subs, Context),
+    #search_result{
+        result = Subs1,
+        total = count_price_subscriptions(PriceId1, Context),
+        is_total_estimated = false
+    };
 search_query(subscriptions, #{ rsc_id := undefined }, {Offset, Limit}, Context) ->
     {ok, Subs} = z_db:qmap_props("
         select sub.*,
@@ -263,8 +337,8 @@ search_query(subscriptions, #{ rsc_id := undefined }, {Offset, Limit}, Context) 
                cust.email as email
         from paysub_subscription sub
             left join paysub_customer cust
-            on sub.psp = cust.psp
-            and sub.psp_customer_id = cust.psp_customer_id
+                on sub.psp = cust.psp
+                and sub.psp_customer_id = cust.psp_customer_id
         order by sub.period_start desc, id desc
         offset $1 limit $2
         ",
@@ -306,6 +380,66 @@ search_query(subscriptions, #{ rsc_id := UserId }, {Offset, Limit}, Context) ->
                 total = count_user_subscriptions(RscId, Context),
                 is_total_estimated = false
             }
+    end;
+search_query(products, #{}, {Offset, Limit}, Context) ->
+    {ok, Prods} = z_db:qmap_props("
+        select *
+        from paysub_product
+        order by is_active desc, psp, name
+        offset $1 limit $2
+        ",
+        [ Offset-1, Limit ],
+        Context),
+    Prods1 = products_add_prices(Prods, Context),
+    #search_result{
+        result = Prods1,
+        total = count_products(Context),
+        is_total_estimated = false
+    }.
+
+
+%% @doc Count all products
+-spec count_products(Context) -> Count when
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_products(Context) ->
+    z_db:q1("select count(*) from paysub_product", Context).
+
+
+products_add_prices(Prods, Context) ->
+    lists:map(
+        fun(#{
+            <<"psp">> := PSP,
+            <<"psp_product_id">> := PspProdId
+        } = Prod) ->
+            {ok, Prices} = z_db:qmap_props("
+                select *,
+                      (select count(*)
+                       from paysub_subscription_item item
+                       where item.psp = p.psp
+                         and item.psp_price_id  = p.psp_price_id) as count
+                from paysub_price p
+                where p.psp = $1
+                  and p.psp_product_id = $2
+                order by name
+                ", [ PSP, PspProdId ], Context),
+            Prod#{
+                <<"prices">> => Prices
+            }
+        end,
+        Prods).
+
+get_product(ProdId, Context) ->
+    case z_db:qmap_props_row("
+        select *
+        from paysub_product
+        where id = $1", [ ProdId ], Context)
+    of
+        {ok, Prod} ->
+            [Prod1] = products_add_prices([Prod], Context),
+            {ok, Prod1};
+        {error, _} = Error ->
+            Error
     end.
 
 %% @doc Count all invoices
@@ -343,7 +477,7 @@ count_user_invoices(UserId, Context) ->
 count_subscriptions(Context) ->
     z_db:q1("select count(*) from paysub_subscription", Context).
 
-%% @doc Count all invoices for an user
+%% @doc Count all subscriptions for an user
 -spec count_user_subscriptions(UserId, Context) -> Count when
     UserId :: m_rsc:resource(),
     Context :: z:context(),
@@ -360,6 +494,38 @@ count_user_subscriptions(UserId, Context) ->
                 ", [RscId], Context)
     end.
 
+%% @doc Count all subscriptions with a certain price
+-spec count_price_subscriptions(PriceId, Context) -> Count when
+    PriceId :: integer(),
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_price_subscriptions(PriceId, Context) ->
+    z_db:q1("
+        select count(*)
+        from paysub_subscription_item item
+            join paysub_price price
+                on price.psp = item.psp
+                and price.psp_price_id = item.psp_price_id
+        where price.id = $1", [ PriceId ], Context).
+
+%% @doc Count all subscriptions with a certain product
+-spec count_product_subscriptions(ProductId, Context) -> Count when
+    ProductId :: integer(),
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_product_subscriptions(ProductId, Context) ->
+    z_db:q1("
+        select count(*)
+        from paysub_subscription_item item
+            join paysub_price price
+                on price.psp = item.psp
+                and price.psp_price_id = item.psp_price_id
+            join paysub_product product
+                on price.psp = product.psp
+                and price.psp_product_id = product.psp_product_id
+        where product.id = $1", [ ProductId ], Context).
+
+
 
 %% @doc Return the list of user groups the user has subscriptions for.
 %% Status can be: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid
@@ -374,10 +540,11 @@ user_groups(UserId0, Context) ->
                 select distinct prod.user_group_id
                 from paysub_product prod
                     join paysub_subscription_item item
-                    and prod.psp_product_id = item.psp_product_id
+                        and prod.psp_product_id = item.psp_product_id
+                        and prod.psp = item.psp
                     join paysub_subscription sub
-                    on sub.id = item.subscription_id
-                    and sub.psp = prod.psp
+                        on sub.id = item.subscription_id
+                        and sub.psp = prod.psp
                 where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
                   and sub.rsc_id = $1
                   and prod.user_group_id is not null
@@ -411,11 +578,12 @@ subscription_add_prices(Subs, Context) ->
                 from paysub_price price
                     left join paysub_subscription_item item
                         on price.psp_price_id = item.psp_price_id
-                        and price.psp = $1
+                        and price.psp = item.psp
                     left join paysub_product prod
                         on prod.psp = price.psp
                         and prod.psp_product_id = price.psp_product_id
                 where item.subscription_id = $2
+                  and price.psp = $1
                 ",
                 [ PSP, Id ],
                 Context),
@@ -723,6 +891,20 @@ sync_product(PSP, #{ psp_product_id := ProdId } = Prod, Context) ->
             {ok, _} = z_db:update(paysub_product, Id, Prod, Context)
     end.
 
+-spec update_product(ProductId, Prod, Context) -> ok | {error, enoent} when
+    ProductId :: integer(),
+    Prod :: map(),
+    Context :: z:context().
+update_product(ProductId, Prod, Context) ->
+    case z_db:update(paysub_product, ProductId, Prod, Context) of
+        {ok, 1} ->
+            ok;
+        {ok, 0} ->
+            {error, enoent};
+        {error, _} = Error ->
+            Error
+    end.
+
 
 %% @doc Delete a product.
 -spec delete_product(PSP, ProdId, Context) -> ok  | {error, enoent} when
@@ -896,7 +1078,7 @@ sync_subscription(PSP, #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Con
             z_db:q("
                 delete from paysub_subscription_item
                 where subscription_id = $1
-                  and psp_price_id = $2",
+                  and psp_price_id = $3",
                 [ SubId, PriceId ],
                 Context)
         end,
@@ -905,10 +1087,10 @@ sync_subscription(PSP, #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Con
         fun(PriceId) ->
             z_db:q("
                 insert into paysub_subscription_item
-                    (subscription_id, psp_price_id)
+                    (subscription_id, psp, psp_price_id)
                 values
-                    ($1, $2)",
-                [ SubId, PriceId ],
+                    ($1, $2, $3)",
+                [ SubId, PSP, PriceId ],
                 Context)
         end,
         New).
@@ -1102,16 +1284,18 @@ install_tables(Context) ->
     [] = z_db:q("
         create table paysub_subscription_item (
             subscription_id int not null,
+            psp character varying(32) not null,
             psp_price_id character varying(128) not null,
             created timestamp with time zone NOT NULL DEFAULT now(),
 
-            constraint paysub_item_pkey primary key (subscription_id, psp_price_id),
+            constraint paysub_item_pkey primary key (subscription_id, psp, psp_price_id),
             constraint fk_paysub_subscription_item_subscription_id foreign key (subscription_id)
                 references paysub_subscription (id)
                 on update cascade
                 on delete cascade
         )", Context),
     [] = z_db:q("CREATE INDEX fki_paysub_subscription_item_subscription_id ON paysub_subscription_item (subscription_id)", Context),
+    [] = z_db:q("CREATE INDEX paysub_subscription_item_psp_psp_price_id_key ON paysub_subscription_item (psp, psp_price_id)", Context),
 
     [] = z_db:q("
         create table paysub_customer (

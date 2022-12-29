@@ -22,13 +22,14 @@
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([]).
--mod_schema(1).
+-mod_schema(2).
 
 -author("Marc Worrell <marc@worrell.nl>").
 
 -export([
     event/2,
 
+    observe_acl_user_groups_modify/3,
     observe_search_query/2,
     observe_admin_menu/3,
 
@@ -42,7 +43,7 @@
 % -include_lib("kernel/include/logger.hrl").
 
 event(#submit{ message = {product_update, Args} }, Context) ->
-    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+    case m_paysub:is_allowed_paysub(Context) of
         true ->
             {id, ProdId} = proplists:lookup(id, Args),
             UGId = z_context:get_q(<<"user_group_id">>, Context),
@@ -59,8 +60,24 @@ event(#submit{ message = {product_update, Args} }, Context) ->
             z_render:growl(?__("You are not allowed to edit products.", Context), Context)
     end.
 
+
+%% @doc Modify the user group based on the active subscriptions. If no subscription found
+%% Then the group `ug_inactive_member` is added.
+observe_acl_user_groups_modify(#acl_user_groups_modify{ id = undefined }, Groups, _Context) ->
+    Groups;
+observe_acl_user_groups_modify(#acl_user_groups_modify{ id = UserId }, Groups, Context) ->
+    MainContactOf = m_edge:subjects(UserId, hasmaincontact, Context),
+    Groups1 = case m_paysub:users_groups([ UserId | MainContactOf ], Context) of
+        [] ->
+            [ m_rsc:rid(ug_inactive_member, Context) | Groups ];
+        UGs ->
+            UGs ++ Groups
+    end,
+    lists:usort(Groups1).
+
+
 observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=OffsetLimit }, Context) ->
-    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+    case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{
                 rsc_id => proplists:get_value(rsc_id, Args)
@@ -70,7 +87,7 @@ observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=
             []
     end;
 observe_search_query(#search_query{ search={paysub_subscriptions, Args}, offsetlimit=OffsetLimit }, Context) ->
-    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+    case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{
                 rsc_id => proplists:get_value(rsc_id, Args),
@@ -82,7 +99,7 @@ observe_search_query(#search_query{ search={paysub_subscriptions, Args}, offsetl
             []
     end;
 observe_search_query(#search_query{ search={paysub_products, _Args}, offsetlimit=OffsetLimit }, Context) ->
-    case z_acl:is_allowed(use, mod_paysub, Context) orelse z_acl:is_admin(Context) of
+    case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{},
             m_paysub:search_query(products, Query, OffsetLimit, Context);
@@ -123,5 +140,15 @@ init(Context) ->
     ok.
 
 manage_schema(_Version, Context) ->
-    m_paysub:install(Context).
+    ok = m_paysub:install(Context),
+    #datamodel{
+        resources = [
+            {ug_inactive_member, acl_user_group, #{
+                <<"language">> => [ en, de ],
+                <<"title">> => #trans{ tr = [
+                    {en, <<"Members without subscriptions">>},
+                    {de, <<"Mitglieder ohne Abonnement"/utf8>>}
+                ]}
+            }}
+        ]}.
 

@@ -53,6 +53,8 @@
     count_subscriptions/1,
 
     user_groups/2,
+    users_groups/2,
+
     user_subscriptions/2,
     user_customers/2,
     user_invoices/2,
@@ -539,9 +541,12 @@ user_groups(UserId0, Context) ->
             Ids = z_db:q("
                 select distinct prod.user_group_id
                 from paysub_product prod
+                    join paysub_price price
+                        on price.psp_product_id = prod.psp_product_id
+                        and price.psp = prod.psp
                     join paysub_subscription_item item
-                        and prod.psp_product_id = item.psp_product_id
-                        and prod.psp = item.psp
+                        on price.psp_price_id = item.psp_price_id
+                        and price.psp = item.psp
                     join paysub_subscription sub
                         on sub.id = item.subscription_id
                         and sub.psp = prod.psp
@@ -551,6 +556,33 @@ user_groups(UserId0, Context) ->
                 ", [ UserId ], Context),
             [ Id || {Id} <- Ids ]
     end.
+
+%% @doc Return the list of user groups the users have subscriptions for.
+%% This is used for users that are the main contact of other resources with possible subscriptions.
+%% Status can be: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid
+%% Only 'unpaid' and 'canceled' are considered inactive subscriptions.
+-spec users_groups(UserIds, Context) -> UserGroupIds when
+    UserIds :: [ m_rsc:resource_id() ],
+    Context :: z:context(),
+    UserGroupIds :: [ m_rsc:resource_id() ].
+users_groups(UserIds, Context) ->
+    Ids = z_db:q("
+        select distinct prod.user_group_id
+        from paysub_product prod
+            join paysub_price price
+                on price.psp_product_id = prod.psp_product_id
+                and price.psp = prod.psp
+            join paysub_subscription_item item
+                on price.psp_price_id = item.psp_price_id
+                and price.psp = item.psp
+            join paysub_subscription sub
+                on sub.id = item.subscription_id
+                and sub.psp = prod.psp
+        where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+          and sub.rsc_id = any($1)
+          and prod.user_group_id is not null
+        ", [ UserIds ], Context),
+    [ Id || {Id} <- Ids ].
 
 
 %% @doc Return the complete list of subscriptions for an user.

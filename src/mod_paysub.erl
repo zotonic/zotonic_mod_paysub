@@ -31,6 +31,7 @@
 
     observe_acl_user_groups_modify/3,
     observe_search_query/2,
+    observe_rsc_merge/2,
     observe_admin_menu/3,
 
     init/1,
@@ -108,6 +109,10 @@ observe_search_query(#search_query{ search={paysub_products, _Args}, offsetlimit
     end;
 observe_search_query(#search_query{}, _Context) ->
     undefined.
+
+observe_rsc_merge(#rsc_merge{ winner_id = WinnerId, loser_id = LoserId }, Context) ->
+    m_paysub:rsc_merge(WinnerId, LoserId, Context),
+    ok.
 
 observe_admin_menu(#admin_menu{}, Acc, Context) ->
     [

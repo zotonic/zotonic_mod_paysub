@@ -89,6 +89,8 @@
     sync_invoices/3,
     delete_invoice/3,
 
+    rsc_merge/3,
+
     install/1,
     drop_tables/1
 ]).
@@ -122,10 +124,11 @@ m_get([ <<"rsc">>, RscId, <<"invoices">>, <<"count">> | Rest ], _Msg, Context) -
             {error, enoent};
         RId ->
             UserId = z_acl:user(Context),
-            case is_allowed_paysub(Context) of
+            case is_allowed_paysub(Context)
+                orelse RId =:= UserId
+                orelse is_user_maincontact(RscId, Context)
+            of
                 true ->
-                    {ok, {count_user_invoices(RId, Context), Rest}};
-                false when RId =:= UserId ->
                     {ok, {count_user_invoices(RId, Context), Rest}};
                 false ->
                     {error, eacces}
@@ -137,10 +140,11 @@ m_get([ <<"rsc">>, RscId, <<"invoices">>, <<"list">> | Rest ], _Msg, Context) ->
             {error, enoent};
         RId ->
             UserId = z_acl:user(Context),
-            Res = case is_allowed_paysub(Context) of
+            Res = case is_allowed_paysub(Context)
+                orelse RId =:= UserId
+                orelse is_user_maincontact(RscId, Context)
+            of
                 true ->
-                    user_invoices(RId, Context);
-                false when RId =:= UserId ->
                     user_invoices(RId, Context);
                 false ->
                     {error, eacces}
@@ -217,9 +221,21 @@ m_get([ <<"product">>, Id | Rest ], _Msg, Context) ->
     end.
 
 
+%% @doc Check is the current user has ACL permission to use the mod_paysub.
+-spec is_allowed_paysub(Context) -> boolean() when
+    Context :: z:context().
 is_allowed_paysub(Context) ->
     z_acl:is_admin(Context) orelse z_acl:is_allowed(use, mod_paysub, Context).
 
+%% @doc Check if the current user is a main contact of the resource.
+-spec is_user_maincontact(SubjectId, Context) -> boolean() when
+    SubjectId :: m_rsc:resource_id(),
+    Context :: z:context().
+is_user_maincontact(SubjectId, Context) ->
+    HasMainContact = m_edge:objects(SubjectId, hasmaincontact, Context),
+    lists:member(z_acl:user(Context), HasMainContact).
+
+%% @doc Perform queries, helpers for the observer_search_query in mod_paysub.erl
 search_query(invoices, #{ rsc_id := undefined }, {Offset, Limit}, Context) ->
     {ok, Result} = z_db:qmap_props("
         select inv.*,
@@ -398,7 +414,6 @@ search_query(products, #{}, {Offset, Limit}, Context) ->
         total = count_products(Context),
         is_total_estimated = false
     }.
-
 
 %% @doc Count all products
 -spec count_products(Context) -> Count when
@@ -1196,6 +1211,29 @@ delete_invoice(PSP, InvId, Context) ->
         0 -> {error, enoent}
     end.
 
+
+%% @doc Merge two resources, all invoices and customers of Loser are added to Winner.
+-spec rsc_merge(WinnerId, LoserId, Context) -> ok when
+    WinnerId :: m_rsc:resource_id(),
+    LoserId :: m_rsc:resource_id(),
+    Context :: z:context().
+rsc_merge(WinnerId, LoserId, Context) ->
+    z_db:q("
+        update paysub_checkout
+        set rsc_id = $1
+        where rsc_id = $2
+        ", [ WinnerId, LoserId ], Context),
+    z_db:q("
+        update paysub_subscription
+        set rsc_id = $1
+        where rsc_id = $2
+        ", [ WinnerId, LoserId ], Context),
+    z_db:q("
+        update paysub_customer
+        set rsc_id = $1
+        where rsc_id = $2
+        ", [ WinnerId, LoserId ], Context),
+    ok.
 
 
 -spec install(z:context()) -> ok.

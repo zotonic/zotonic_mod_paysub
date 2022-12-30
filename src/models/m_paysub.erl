@@ -176,10 +176,11 @@ m_get([ <<"rsc">>, RscId, <<"subscriptions">>, <<"count">> | Rest ], _Msg, Conte
             {error, enoent};
         RId ->
             UserId = z_acl:user(Context),
-            case is_allowed_paysub(Context) of
+            case is_allowed_paysub(Context)
+                orelse RId =:= UserId
+                orelse is_user_maincontact(RscId, Context)
+            of
                 true ->
-                    {ok, {count_user_subscriptions(RId, Context), Rest}};
-                false when RId =:= UserId ->
                     {ok, {count_user_subscriptions(RId, Context), Rest}};
                 false ->
                     {error, eacces}
@@ -191,10 +192,11 @@ m_get([ <<"rsc">>, RscId, <<"subscriptions">>, <<"list">> | Rest ], _Msg, Contex
             {error, enoent};
         RId ->
             UserId = z_acl:user(Context),
-            Res = case is_allowed_paysub(Context) of
+            Res = case is_allowed_paysub(Context)
+                orelse RId =:= UserId
+                orelse is_user_maincontact(RscId, Context)
+            of
                 true ->
-                    user_subscriptions(RId, Context);
-                false when RId =:= UserId ->
                     user_subscriptions(RId, Context);
                 false ->
                     {error, eacces}
@@ -668,7 +670,7 @@ user_invoices(UserId0, Context) ->
                     left join paysub_customer cust
                     on inv.psp = cust.psp
                     and inv.psp_customer_id = cust.psp_customer_id
-                where cus.rsc_id = $1
+                where cust.rsc_id = $1
                 order by inv.created desc, id desc",
                 [ UserId ],
                 Context)

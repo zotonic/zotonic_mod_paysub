@@ -1,8 +1,8 @@
 %% @author Marc Worrell <marc@worrell.nl>
-%% @copyright 2022 Marc Worrell
+%% @copyright 2022-2023 Marc Worrell
 %% @doc Subscriptions and payments for members using Stripe and other PSPs
 
-%% Copyright 2022 Marc Worrell
+%% Copyright 2022-2023 Marc Worrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -68,14 +68,23 @@ observe_acl_user_groups_modify(#acl_user_groups_modify{ id = undefined }, Groups
     Groups;
 observe_acl_user_groups_modify(#acl_user_groups_modify{ id = UserId }, Groups, Context) ->
     MainContactOf = m_edge:subjects(UserId, hasmaincontact, Context),
-    Groups1 = case m_paysub:users_groups([ UserId | MainContactOf ], Context) of
+    UGs = m_paysub:users_groups([ UserId | MainContactOf ], Context)
+          ++ main_contact_ugs(MainContactOf, Context),
+    Groups1 = case UGs of
         [] ->
             [ m_rsc:rid(ug_inactive_member, Context) | Groups ];
-        UGs ->
+        _ ->
             UGs ++ Groups
     end,
     lists:usort(Groups1).
 
+main_contact_ugs(Ids, Context) ->
+    lists:flatten(
+        lists:map(
+            fun(Id) ->
+                m_edge:objects(Id, hasusergroup, Context)
+            end,
+            Ids)).
 
 observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=OffsetLimit }, Context) ->
     case m_paysub:is_allowed_paysub(Context) of

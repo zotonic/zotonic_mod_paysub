@@ -1,24 +1,9 @@
-%% @copyright 2022 Marc Worrell
+%% @copyright 2022-2023 Marc Worrell
 %% @doc Model for paid subscriptions
 %% @end
 
-%% Copyright 2022 Marc Worrrell
-%%
-%% Licensed under the Apache License, Version 2.0 (the "License");
-%% you may not use this file except in compliance with the License.
-%% You may obtain a copy of the License at
-%%
-%%     http://www.apache.org/licenses/LICENSE-2.0
-%%
-%% Unless required by applicable law or agreed to in writing, software
-%% distributed under the License is distributed on an "AS IS" BASIS,
-%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%% See the License for the specific language governing permissions and
-%% limitations under the License.
-
-
-%% Subscription status
-%% ===================
+%% Stripe Subscription status model
+%% ================================
 %%
 %% Possible values are: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid.
 %%
@@ -41,14 +26,33 @@
 %% be created, but then immediately automatically closed). After receiving updated payment information from
 %% a customer, you may choose to reopen and pay their closed invoices.
 
+
+%% Copyright 2022-2023 Marc Worrrell
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+
+
 -module(m_paysub).
 
 -export([
     m_get/3,
 
+    is_subscriber/2,
     is_allowed_paysub/1,
 
+    search_query_term/2,
     search_query/4,
+
     count_invoices/1,
     count_subscriptions/1,
 
@@ -97,6 +101,9 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
+m_get([ <<"is_subscriber">>, Id | Rest ], _Msg, Context) ->
+    IsSubscriber = is_subscriber(Id, Context),
+    {ok, {IsSubscriber, Rest}};
 m_get([ <<"checkout">>, <<"status">>, CheckoutNr | Rest ], _Msg, Context) ->
     case checkout_status(CheckoutNr, Context) of
         {ok, Status} ->
@@ -223,6 +230,36 @@ m_get([ <<"product">>, Id | Rest ], _Msg, Context) ->
     end.
 
 
+%% @doc Check if the given user is a subscriber (of any valid subscription). If the
+%% user doesn't exist or is invisible then 'false' is returned. If the user is a main
+%% contact then the subject is also checked.
+-spec is_subscriber(Id, Context) -> boolean() when
+    Id :: m_rsc:resource(),
+    Context :: z:context().
+is_subscriber(Id, Context) ->
+    case m_rsc:rid(Id, Context) of
+        undefined ->
+            false;
+        UserId ->
+            case z_acl:rsc_visible(UserId, Context) of
+                true ->
+                    MainContactOf = m_edge:subjects(UserId, hasmaincontact, Context),
+                    SubscriberIds = [ UserId | MainContactOf ],
+                    Count = z_db:q1("
+                        select count(*)
+                        from paysub_subscription
+                        where rsc_id = any($1::int[])
+                          and status in ('incomplete', 'trialing', 'active', 'past_due')
+                        ",
+                        [ SubscriberIds ],
+                        Context),
+                    Count > 0;
+                false ->
+                    false
+            end
+    end.
+
+
 %% @doc Check is the current user has ACL permission to use the mod_paysub.
 -spec is_allowed_paysub(Context) -> boolean() when
     Context :: z:context().
@@ -236,6 +273,53 @@ is_allowed_paysub(Context) ->
 is_user_maincontact(SubjectId, Context) ->
     HasMainContact = m_edge:objects(SubjectId, hasmaincontact, Context),
     lists:member(z_acl:user(Context), HasMainContact).
+
+
+%% @doc Extra query terms. Query for subscribers.
+-spec search_query_term(QueryTerm, Context) -> SqlTerm when
+    QueryTerm :: #search_query_term{},
+    Context :: z:context(),
+    SqlTerm :: #search_sql_term{}.
+search_query_term(#search_query_term{ term = <<"is_subscriber">>, arg = Arg }, Context) ->
+    PredId = m_rsc:rid(hasmaincontact, Context),
+    Select = if
+        PredId =:= undefined ->
+            % All subscribers
+            <<" select sub.rsc_id
+                from paysub_subscription sub
+                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+            ">>;
+        is_integer(PredId) ->
+            % All subscribers and their main contacts
+            <<" select sub.rsc_id
+                from paysub_subscription sub
+                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                union
+                select mce.object_id
+                from paysub_subscription sub
+                    join edge mce
+                    on mce.subject_id = sub.rsc_id
+                    and mce.predicate_id = ", (integer_to_binary(PredId))/binary, "
+                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+            ">>
+    end,
+    case z_convert:to_bool(Arg) of
+        true ->
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (", Select/binary, ")">>
+                ]
+            };
+        false ->
+            #search_sql_term{
+                where = [
+                    <<"rsc.id not in (", Select/binary, ")">>
+                ]
+            }
+    end;
+search_query_term(#search_sql_term{}, _Context) ->
+    undefined.
+
 
 %% @doc Perform queries, helpers for the observer_search_query in mod_paysub.erl
 search_query(invoices, #{ rsc_id := undefined }, {Offset, Limit}, Context) ->

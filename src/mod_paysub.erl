@@ -30,6 +30,7 @@
     event/2,
 
     observe_acl_user_groups_modify/3,
+    observe_search_query_term/2,
     observe_search_query/2,
     observe_rsc_merge/2,
     observe_admin_menu/3,
@@ -85,6 +86,9 @@ main_contact_ugs(Ids, Context) ->
                 m_edge:objects(Id, hasusergroup, Context)
             end,
             Ids)).
+
+observe_search_query_term(#search_query_term{} = Term, Context) ->
+    m_paysub:search_query_term(Term, Context).
 
 observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=OffsetLimit }, Context) ->
     case m_paysub:is_allowed_paysub(Context) of

@@ -1,24 +1,9 @@
-%% @copyright 2022 Marc Worrell
+%% @copyright 2022-2023 Marc Worrell
 %% @doc Model for paid subscriptions
 %% @end
 
-%% Copyright 2022 Marc Worrrell
-%%
-%% Licensed under the Apache License, Version 2.0 (the "License");
-%% you may not use this file except in compliance with the License.
-%% You may obtain a copy of the License at
-%%
-%%     http://www.apache.org/licenses/LICENSE-2.0
-%%
-%% Unless required by applicable law or agreed to in writing, software
-%% distributed under the License is distributed on an "AS IS" BASIS,
-%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%% See the License for the specific language governing permissions and
-%% limitations under the License.
-
-
-%% Subscription status
-%% ===================
+%% Stripe Subscription status model
+%% ================================
 %%
 %% Possible values are: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid.
 %%
@@ -40,6 +25,22 @@
 %% when a subscription has a status of unpaid, no subsequent invoices will be attempted (invoices will
 %% be created, but then immediately automatically closed). After receiving updated payment information from
 %% a customer, you may choose to reopen and pay their closed invoices.
+
+
+%% Copyright 2022-2023 Marc Worrrell
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+
 
 -module(m_paysub).
 
@@ -102,7 +103,7 @@
 
 m_get([ <<"is_subscriber">>, Id | Rest ], _Msg, Context) ->
     IsSubscriber = is_subscriber(Id, Context),
-    {ok, {IsSubscriber, Context}};
+    {ok, {IsSubscriber, Rest}};
 m_get([ <<"checkout">>, <<"status">>, CheckoutNr | Rest ], _Msg, Context) ->
     case checkout_status(CheckoutNr, Context) of
         {ok, Status} ->
@@ -316,7 +317,7 @@ search_query_term(#search_query_term{ term = <<"is_subscriber">>, arg = Arg }, C
                 ]
             }
     end;
-search_query_term(#search_sql_term{}, Context) ->
+search_query_term(#search_sql_term{}, _Context) ->
     undefined.
 
 

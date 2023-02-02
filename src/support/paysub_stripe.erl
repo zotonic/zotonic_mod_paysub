@@ -441,7 +441,7 @@ ensure_stripe_customer(UserId, Context) ->
                     Cust = #{
                         <<"address">> => billing_address(RscId, ContextSudo),
                         <<"email">> => billing_email(RscId, ContextSudo),
-                        <<"phone">> => m_rsc:p_no_acl(RscId, <<"phone">>, ContextSudo),
+                        <<"phone">> => truncate(m_rsc:p_no_acl(RscId, <<"phone">>, ContextSudo), 19),
                         <<"name">> => z_string:trim(Name),
                         <<"preferred_locales">> => [ bin(pref_language(RscId, ContextSudo)) ],
                         <<"metadata">> => #{
@@ -475,6 +475,11 @@ ensure_stripe_customer(UserId, Context) ->
                     end
             end
     end.
+
+truncate(undefined, _Len) ->
+    undefined;
+truncate(B, Len) ->
+    z_string:truncatechars(B, Len).
 
 billing_address(Id, Context) ->
     BillingCountry = m_rsc:p(Id, <<"billing_country">>, Context),

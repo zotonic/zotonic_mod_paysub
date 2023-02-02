@@ -336,7 +336,9 @@ stripe_price(#{
     }.
 
 recurring_period(#{ <<"recurring">> := #{ <<"interval">> := Interval }}) ->
-    Interval.
+    Interval;
+recurring_period(#{ <<"recurring">> := undefined }) ->
+    undefined.
 
 
 schedule_sync(What, Context) ->

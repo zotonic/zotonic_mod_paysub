@@ -47,6 +47,8 @@
     sync_customer/2,
     delete_customer/2,
 
+    ensure_stripe_customer/2,
+
     sync_subscriptions/1,
     sync_subscription/2,
     delete_subscription/2,
@@ -251,9 +253,8 @@ stripe_prod(#{
         <<"active">> := IsActive,
         <<"default_price">> := DefaultPrice,
         <<"description">> := Description,
-        <<"name">> := Name,
-        <<"metadata">> := Metadata
-    }, Context) ->
+        <<"name">> := Name
+    } = StripeProd, Context) ->
     Prod = #{
         psp => <<"stripe">>,
         psp_product_id => Id,
@@ -262,7 +263,7 @@ stripe_prod(#{
         name => Name,
         description => Description
     },
-    case Metadata of
+    case maps:get(<<"metadata">>, StripeProd, #{}) of
         #{ <<"user_group_id">> := UG } ->
             case m_rsc:rid(UG, Context) of
                 undefined ->
@@ -415,6 +416,106 @@ delete_customer(#{ <<"id">> := Id }, Context) ->
     m_paysub:delete_customer(stripe, Id, Context).
 
 
+%% @doc Ensure that a stripe customer is created for the given user-id
+-spec ensure_stripe_customer(UserId, Context) -> {ok, StripeId} | {error, Reason} when
+    UserId :: m_rsc:resource(),
+    Context :: z:context(),
+    StripeId :: binary(),
+    Reason :: term().
+ensure_stripe_customer(UserId, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            {error, enoent};
+        RscId ->
+            case m_paysub:get_customer(stripe, RscId, Context) of
+                {ok, #{
+                    <<"psp_customer_id">> := PSPCustId
+                }} ->
+                    {ok, PSPCustId};
+                {error, enoent} ->
+                    ContextSudo = z_acl:sudo(Context),
+                    {Name, _} = z_template:render_to_iolist(<<"_name.tpl">>, [ {id, RscId} ], ContextSudo),
+                    AdminUrl = z_dispatcher:url_for(admin_edit_rsc, [ {id, RscId} ], Context),
+                    Cust = #{
+                        <<"address">> => billing_address(RscId, ContextSudo),
+                        <<"email">> => billing_email(RscId, ContextSudo),
+                        <<"phone">> => m_rsc:p_no_acl(RscId, <<"phone">>, ContextSudo),
+                        <<"name">> => z_string:trim(Name),
+                        <<"preferred_locales">> => [ bin(pref_language(RscId, ContextSudo)) ],
+                        <<"metadata">> => #{
+                            <<"rsc_id">> => RscId,
+                            <<"page_url">> => m_rsc:p_no_acl(RscId, page_url_abs, ContextSudo),
+                            <<"admin_url">> => z_context:abs_url(AdminUrl, Context)
+                        }
+                    },
+                    case paysub_stripe_api:fetch(post, [ <<"customers">> ], Cust, Context) of
+                        {ok, #{ <<"id">> := PSPCustId } = CustObject} ->
+                            sync_customer(CustObject, Context),
+                            ?LOG_INFO(#{
+                                in => zotonic_mod_paysub,
+                                text => <<"Stripe created customer for resource">>,
+                                result => ok,
+                                rsc_id => RscId,
+                                psp_customer_id => PSPCustId,
+                                psp => stripe
+                            }),
+                            {ok, PSPCustId};
+                        {error, Reason} = Error ->
+                            ?LOG_ERROR(#{
+                                in => zotonic_mod_paysub,
+                                text => <<"Stripe error creating customer for resource">>,
+                                rsc_id => RscId,
+                                result => error,
+                                reason => Reason,
+                                psp => stripe
+                            }),
+                            Error
+                    end
+            end
+    end.
+
+billing_address(Id, Context) ->
+    BillingCountry = m_rsc:p(Id, <<"billing_country">>, Context),
+    case z_utils:is_empty(BillingCountry) of
+        true ->
+            #{
+                <<"city">> => bin(m_rsc:p(Id, <<"address_city">>, Context)),
+                <<"country">> => z_string:to_upper(bin(m_rsc:p(Id, <<"address_country">>, Context))),
+                <<"line1">> => bin(m_rsc:p(Id, <<"address_street_1">>, Context)),
+                <<"line2">> => bin(m_rsc:p(Id, <<"address_street_2">>, Context)),
+                <<"postal_code">> => bin(m_rsc:p(Id, <<"address_postcode">>, Context)),
+                <<"state">> => bin(m_rsc:p(Id, <<"address_state">>, Context))
+            };
+        false ->
+            #{
+                <<"city">> => bin(m_rsc:p(Id, <<"billing_city">>, Context)),
+                <<"country">> => z_string:to_upper(bin(BillingCountry)),
+                <<"line1">> => bin(m_rsc:p(Id, <<"billing_street_1">>, Context)),
+                <<"line2">> => bin(m_rsc:p(Id, <<"billing_street_2">>, Context)),
+                <<"postal_code">> => bin(m_rsc:p(Id, <<"billing_postcode">>, Context)),
+                <<"state">> => bin(m_rsc:p(Id, <<"billing_state">>, Context))
+            }
+    end.
+
+billing_email(Id, Context) ->
+    BillingEmail = m_rsc:p(Id, <<"billing_email">>, Context),
+    case z_utils:is_empty(BillingEmail) of
+        true -> m_rsc:p(Id, <<"email">>, Context);
+        false -> BillingEmail
+    end.
+
+pref_language(Id, Context) ->
+    case m_rsc:p_no_acl(Id, <<"pref_language">>, Context) of
+        undefined ->
+            z_context:language(Context);
+        Lang ->
+            Lang
+    end.
+
+bin(V) ->
+    z_convert:to_binary(V).
+
+
 %% @doc Update a single subscription after a webhook event. Optionally
 %% copy the rsc_id from the sub metadata to the customer metadata.
 -spec sync_subscription(Sub, Context) -> ok | {error, enoent} when
@@ -478,7 +579,7 @@ maybe_set_customer_rsc_id(RscId, CustId, Context) ->
                 }
             },
             Path = [ <<"customers">>, CustId ],
-            ?DEBUG(paysub_stripe_api:fetch(post, Path, Payload, Context)),
+            paysub_stripe_api:fetch(post, Path, Payload, Context),
             ok;
         {ok, #{ <<"rsc_id">> := RscId }} ->
             ok;
@@ -678,8 +779,10 @@ timestamp_to_datetime(undefined) ->
 timestamp_to_datetime(DT) ->
     z_datetime:timestamp_to_datetime(DT).
 
-maybe_user_id(#{ <<"metadata">> := #{ <<"user_id">> := UserId }}) -> z_convert:to_integer(UserId);
-maybe_user_id(#{ <<"metadata">> := #{ <<"rsc_id">> := UserId }}) -> z_convert:to_integer(UserId);
+maybe_user_id(#{ <<"metadata">> := #{ <<"rsc_id">> := UserId }}) ->
+    z_convert:to_integer(UserId);
+maybe_user_id(#{ <<"metadata">> := #{ <<"user_id">> := UserId }}) ->
+    z_convert:to_integer(UserId);
 maybe_user_id(_) -> undefined.
 
 pref_lang(#{ <<"preferred_locales">> := [ Locale | _ ]}, _Context) ->

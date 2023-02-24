@@ -55,8 +55,6 @@ process(<<"POST">>, _AcceptedCT, _ProvidedCT, Context) ->
     case handle(EventType, Parsed, Context) of
         ok ->
             {true, Context};
-        {ok, _} ->
-            {true, Context};
         % {error, session_data} ->
         %     {{halt, 404}, Context};
         {error, _} ->

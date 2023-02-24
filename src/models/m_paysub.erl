@@ -879,7 +879,7 @@ checkout_status(CheckoutNr, Context) ->
     PSP :: atom() | binary(),
     UserId :: undefined | m_rsc:resource_id(),
     Mode :: payment | subscription,
-    Args :: map(),
+    Args :: proplists:proplist(),
     Context :: z:context(),
     Result :: {ok, CheckoutNr} | {error, term()},
     CheckoutNr :: binary().
@@ -1090,7 +1090,8 @@ sync_price(PSP, #{ psp_price_id := PriceId } = Price, Context) ->
             {ok, _} = z_db:insert(paysub_price, Price1, Context);
         Id ->
             {ok, _} = z_db:update(paysub_price, Id, Price, Context)
-    end.
+    end,
+    ok.
 
 
 %% @doc Delete a price.
@@ -1157,7 +1158,8 @@ sync_customer(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
             {ok, _} = z_db:insert(paysub_customer, Cust1, Context);
         Id ->
             {ok, _} = z_db:update(paysub_customer, Id, Cust, Context)
-    end.
+    end,
+    ok.
 
 -spec delete_customer(PSP, Id, Context) -> ok | {error, enoent} when
     PSP :: atom() | binary(),
@@ -1276,7 +1278,8 @@ sync_invoice(PSP, #{ psp_invoice_id := InvId } = Prod, Context) ->
             {ok, _} = z_db:insert(paysub_invoice, Prod1, Context);
         Id ->
             {ok, _} = z_db:update(paysub_invoice, Id, Prod, Context)
-    end.
+    end,
+    ok.
 
 
 %% @doc Delete an invoice.

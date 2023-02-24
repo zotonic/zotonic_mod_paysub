@@ -57,8 +57,8 @@ process(<<"POST">>, _AcceptedCT, _ProvidedCT, Context) ->
             {true, Context};
         {ok, _} ->
             {true, Context};
-        {error, session_data} ->
-            {{halt, 404}, Context};
+        % {error, session_data} ->
+        %     {{halt, 404}, Context};
         {error, _} ->
             {{halt, 500}, Context}
     end.

@@ -133,7 +133,6 @@ handle(<<"customer.subscription.updated">>, Ps, Context) ->
     sync_subscription(Ps, Context);
 handle(<<"customer.subscription.deleted">>, Ps, Context) ->
     delete_subscription(Ps, Context);
-
 handle(<<"customer.", _/binary>> = Type, Ps, _Context) ->
     ?DEBUG(Type),
     ?DEBUG(Ps),
@@ -145,6 +144,9 @@ handle(<<"price.", _/binary>>, _Ps, Context) ->
 handle(<<"product.", _/binary>>, _Ps, Context) ->
     paysub_stripe:schedule_sync(products, Context),
     ok;
+
+handle(<<"payment_intent.", _/binary>>, Ps, Context) ->
+    sync_payment(Ps, Context);
 
 handle(Type, _Ps, _Context) ->
     % Unhandled event type
@@ -199,6 +201,9 @@ sync_invoice(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
 delete_invoice(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
     _ = paysub_stripe:delete_invoice(Sub, Context),
     ok.
+
+sync_payment(#{ <<"data">> := #{ <<"object">> := PaymentIntent }}, Context) ->
+    paysub_stripe:sync_payment(PaymentIntent, Context).
 
 
 is_valid_signature(Body, Context) ->
@@ -457,22 +462,6 @@ is_valid_signature(Body, Context) ->
 %         mandate = event.data.object
 %     when 'order.created'
 %         order = event.data.object
-%     when 'payment_intent.amount_capturable_updated'
-%         payment_intent = event.data.object
-%     when 'payment_intent.canceled'
-%         payment_intent = event.data.object
-%     when 'payment_intent.created'
-%         payment_intent = event.data.object
-%     when 'payment_intent.partially_funded'
-%         payment_intent = event.data.object
-%     when 'payment_intent.payment_failed'
-%         payment_intent = event.data.object
-%     when 'payment_intent.processing'
-%         payment_intent = event.data.object
-%     when 'payment_intent.requires_action'
-%         payment_intent = event.data.object
-%     when 'payment_intent.succeeded'
-%         payment_intent = event.data.object
 %     when 'payment_link.created'
 %         payment_link = event.data.object
 %     when 'payment_link.updated'

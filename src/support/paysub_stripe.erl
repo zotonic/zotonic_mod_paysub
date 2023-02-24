@@ -57,6 +57,10 @@
     sync_invoice/2,
     delete_invoice/2,
 
+    sync_payments/1,
+    sync_payment/2,
+    delete_payment/2,
+
     schedule_sync/2,
     async_task/2
     ]).
@@ -780,7 +784,6 @@ maybe_add_address(#{
 maybe_add_address(_, Invoice) ->
     Invoice.
 
-
 timestamp_to_datetime(undefined) ->
     undefined;
 timestamp_to_datetime(DT) ->
@@ -802,6 +805,97 @@ adr_country(#{ <<"address">> := #{ <<"country">> := Country } }) when is_binary(
 adr_country(_) ->
     undefined.
 
+
+%% @doc Sync all payment intents in Stripe with payments here.
+-spec sync_payments(Context) -> ok | {error, term()} when
+    Context :: z:context().
+sync_payments(Context) ->
+    Payload = #{
+        limit => 50
+    },
+    Path = [ <<"payment_intents">> ],
+    case fetch_all(
+        paysub_stripe_api:fetch(get, Path, Payload, Context),
+        Path,
+        Payload,
+        [],
+        Context)
+    of
+        {ok, Payments} ->
+            Payments1 = lists:map(
+                fun(Inv) ->
+                    stripe_payment(Inv, Context)
+                end, Payments),
+            m_paysub:sync_payments(stripe, Payments1, Context);
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Sync a payment intent received via Stripe webhook.
+sync_payment(PaymentObject, Context) ->
+    Payment1 = stripe_payment(PaymentObject, Context),
+    m_paysub:sync_payment(stripe, Payment1, Context).
+
+%% @doc Delete an invoice received via Stripe webhook.
+-spec delete_payment(PaymentObject, Context) -> ok | {error, enoent} when
+    PaymentObject :: map(),
+    Context :: z:context().
+delete_payment(#{ <<"id">> := Id }, Context) ->
+    m_paysub:delete_payment(stripe, Id, Context).
+
+
+stripe_payment(#{
+        <<"id">> := Id,
+        <<"status">> := Status,
+        <<"description">> := Description,
+        <<"customer">> := CustomerId,
+        <<"currency">> := Currency,
+        <<"amount">> := Amount,
+        <<"amount_received">> := AmountReceived,
+        <<"invoice">> := InvoiceId,
+        <<"created">> := Created
+    } = P, _Context) ->
+    io:format("~p~n", [ P ]),
+    Payment = payment_name_details(P),
+    Payment#{
+        psp_payment_id => Id,
+        psp_customer_id => CustomerId,
+        psp_invoice_id => InvoiceId,
+        status => Status,
+        description => Description,
+        currency => z_string:to_upper(Currency),
+        amount => Amount,
+        amount_received => AmountReceived,
+        created => timestamp_to_datetime(Created)
+    }.
+
+payment_name_details(#{ <<"charges">> := #{ <<"data">> := Data }}) ->
+    payment_charge_details(Data);
+payment_name_details(_) ->
+    #{}.
+
+payment_charge_details([]) ->
+    #{};
+payment_charge_details([
+    #{
+        <<"billing_details">> := #{
+            <<"email">> := Email,
+            <<"name">> := Name,
+            <<"phone">> := Phone
+        }
+    } | _ ]) when
+        Name =/= undefined;
+        Email =/= undefined;
+        Phone =/= undefined ->
+    #{
+        name => Name,
+        email => Email,
+        phone => Phone
+    };
+payment_charge_details([_|Cs]) ->
+    payment_charge_details(Cs).
+
+
 fetch_all({ok, #{
         <<"data">> := List,
         <<"object">> := <<"list">>,
@@ -813,6 +907,7 @@ fetch_all({ok, #{
         <<"object">> := <<"list">>,
         <<"has_more">> := true
     }}, Path, Payload, Acc, Context) ->
+    ?DEBUG(length(List)),
     P1 = Payload#{
         starting_after => last_id(List)
     },

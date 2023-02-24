@@ -120,6 +120,16 @@ observe_search_query(#search_query{ search={paysub_products, _Args}, offsetlimit
         false ->
             []
     end;
+observe_search_query(#search_query{ search={paysub_payments, Args}, offsetlimit=OffsetLimit }, Context) ->
+    case m_paysub:is_allowed_paysub(Context) of
+        true ->
+            Query = #{
+                rsc_id => proplists:get_value(rsc_id, Args)
+            },
+            m_paysub:search_query(payments, Query, OffsetLimit, Context);
+        false ->
+            []
+    end;
 observe_search_query(#search_query{}, _Context) ->
     undefined.
 
@@ -146,6 +156,12 @@ observe_admin_menu(#admin_menu{}, Acc, Context) ->
             parent = admin_modules,
             label = ?__("Payments - Products", Context),
             url = {paysub_admin_products_overview, []},
+            visiblecheck = {acl, use, mod_paysub}},
+        #menu_item{
+            id=paysub_admin_payments_overview,
+            parent = admin_modules,
+            label = ?__("Payments - Payments", Context),
+            url = {paysub_admin_payments_overview, []},
             visiblecheck = {acl, use, mod_paysub}}
         | Acc
     ].

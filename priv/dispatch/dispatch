@@ -8,5 +8,7 @@
     {paysub_admin_subscriptions_overview, [ "admin", "paysub", "subscriptions" ], controller_admin,
             [ {template, "admin_paysub_subscriptions_overview.tpl"} ]},
     {paysub_admin_products_overview, [ "admin", "paysub", "products" ], controller_admin,
-            [ {template, "admin_paysub_products_overview.tpl"} ]}
+            [ {template, "admin_paysub_products_overview.tpl"} ]},
+    {paysub_admin_payments_overview, [ "admin", "paysub", "payments" ], controller_admin,
+            [ {template, "admin_paysub_payments_overview.tpl"} ]}
 ].

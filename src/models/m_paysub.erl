@@ -1022,7 +1022,8 @@ sync_product(PSP, #{ psp_product_id := ProdId } = Prod, Context) ->
             {ok, _} = z_db:insert(paysub_product, Prod1, Context);
         Id ->
             {ok, _} = z_db:update(paysub_product, Id, Prod, Context)
-    end.
+    end,
+    ok.
 
 -spec update_product(ProductId, Prod, Context) -> ok | {error, enoent} when
     ProductId :: integer(),

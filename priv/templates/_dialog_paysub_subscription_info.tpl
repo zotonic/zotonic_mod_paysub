@@ -165,7 +165,7 @@
                 <td>
                     {# TODO: make flexible for PSP #}
                     {% if p.psp == 'stripe' %}
-                        <a href="https://stripe.com/"
+                        <a href="https://dashboard.stripe.com/subscriptions/{{ p.psp_subscription_id|urlencode }}"
                            class="btn btn-primary btn-xs" target="payment-psp">
                             <span class="glyphicon glyphicon-new-window"></span>
                             {% trans "view at {psp}" psp= p.psp|capfirst|escape %}

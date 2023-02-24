@@ -66,7 +66,8 @@
                     {% if p.rsc_id %}
                         <div class="pull-right" style="padding-left:10px;">
                             <a href="{% url paysub_admin_invoices_overview qrsc_id=p.rsc_id %}">{_ Show all invoices _} &gt;</a><br>
-                            <a href="{% url paysub_admin_subscriptions_overview qrsc_id=p.rsc_id %}">{_ Show all subscriptions _} &gt;</a>
+                            <a href="{% url paysub_admin_subscriptions_overview qrsc_id=p.rsc_id %}">{_ Show all subscriptions _} &gt;</a><br>
+                            <a href="{% url paysub_admin_payments_overview qrsc_id=p.rsc_id %}">{_ Show all payments _} &gt;</a>
                         </div>
                         <a href="{% url admin_edit_rsc id=p.rsc_id %}">{% include "_name.tpl" id=p.rsc_id %}</a>
                     {% else %}

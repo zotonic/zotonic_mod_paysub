@@ -55,6 +55,7 @@
 
     count_invoices/1,
     count_subscriptions/1,
+    count_payments/1,
 
     user_groups/2,
     users_groups/2,
@@ -62,6 +63,7 @@
     user_subscriptions/2,
     user_customers/2,
     user_invoices/2,
+    user_payments/2,
 
     checkout_status/2,
     checkout_create/5,
@@ -80,6 +82,10 @@
     sync_prices/3,
     sync_price/3,
     delete_price/3,
+
+    sync_payments/3,
+    sync_payment/3,
+    delete_payment/3,
 
     sync_subscription/4,
     delete_subscription/3,
@@ -205,6 +211,58 @@ m_get([ <<"rsc">>, RscId, <<"subscriptions">>, <<"list">> | Rest ], _Msg, Contex
             of
                 true ->
                     user_subscriptions(RId, Context);
+                false ->
+                    {error, eacces}
+            end,
+            case Res of
+                {ok, Subs} ->
+                    {ok, {Subs, Rest}};
+                {error, _} = Error ->
+                    Error
+            end
+    end;
+m_get([ <<"payment">>, Id | Rest ], _Msg, Context) ->
+    PaymentId = z_convert:to_integer(Id),
+    Res = case is_allowed_paysub(Context) of
+        true ->
+            get_payment(PaymentId, Context);
+        false ->
+            get_user_payment(z_acl:user(Context), PaymentId, Context)
+    end,
+    case Res of
+        {ok, Sub} ->
+            {ok, {Sub, Rest}};
+        {error, _} = Error ->
+            Error
+    end;
+m_get([ <<"rsc">>, RscId, <<"payments">>, <<"count">> | Rest ], _Msg, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        RId ->
+            UserId = z_acl:user(Context),
+            case is_allowed_paysub(Context)
+                orelse RId =:= UserId
+                orelse is_user_maincontact(RscId, Context)
+            of
+                true ->
+                    {ok, {count_user_payments(RId, Context), Rest}};
+                false ->
+                    {error, eacces}
+            end
+    end;
+m_get([ <<"rsc">>, RscId, <<"payments">>, <<"list">> | Rest ], _Msg, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        RId ->
+            UserId = z_acl:user(Context),
+            Res = case is_allowed_paysub(Context)
+                orelse RId =:= UserId
+                orelse is_user_maincontact(RscId, Context)
+            of
+                true ->
+                    user_payments(RId, Context);
                 false ->
                     {error, eacces}
             end,
@@ -499,6 +557,58 @@ search_query(products, #{}, {Offset, Limit}, Context) ->
         result = Prods1,
         total = count_products(Context),
         is_total_estimated = false
+    };
+search_query(payments, #{ rsc_id := UserId }, {Offset, Limit}, Context) when UserId =/= undefined ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            #search_result{
+                result = [],
+                total = 0,
+                is_total_estimated = false
+            };
+        RscId ->
+            {ok, Result} = z_db:qmap_props("
+                select p.*,
+                       cust.id as customer_id,
+                       cust.rsc_id as rsc_id,
+                       cust.email as customer_email,
+                       cust.name as customer_name
+                from paysub_payment p
+                    join paysub_customer cust
+                    on p.psp = cust.psp
+                    and p.psp_customer_id = cust.psp_customer_id
+                where cust.rsc_id = $3
+                order by p.created desc, id desc
+                offset $1 limit $2
+                ",
+                [ Offset-1, Limit, RscId ],
+                Context),
+            #search_result{
+                result = Result,
+                total = count_user_payments(RscId, Context),
+                is_total_estimated = false
+            }
+    end;
+search_query(payments, #{}, {Offset, Limit}, Context) ->
+    {ok, Result} = z_db:qmap_props("
+        select p.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as customer_email,
+               cust.name as customer_name
+        from paysub_payment p
+            left join paysub_customer cust
+            on p.psp = cust.psp
+            and p.psp_customer_id = cust.psp_customer_id
+        order by p.created desc, id desc
+        offset $1 limit $2
+        ",
+        [ Offset-1, Limit ],
+        Context),
+    #search_result{
+        result = Result,
+        total = count_payments(Context),
+        is_total_estimated = false
     }.
 
 %% @doc Count all products
@@ -544,6 +654,35 @@ get_product(ProdId, Context) ->
         {error, _} = Error ->
             Error
     end.
+
+
+%% @doc Count all payments
+-spec count_payments(Context) -> Count when
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_payments(Context) ->
+    z_db:q1("select count(*) from paysub_payment", Context).
+
+%% @doc Count all payments for an user
+-spec count_user_payments(UserId, Context) -> Count when
+    UserId :: m_rsc:resource(),
+    Context :: z:context(),
+    Count :: non_neg_integer().
+count_user_payments(UserId, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            0;
+        RscId ->
+            z_db:q1("
+                select count(*)
+                from paysub_payment p
+                    join paysub_customer cust
+                    on p.psp = cust.psp
+                    and p.psp_customer_id = cust.psp_customer_id
+                where cust.rsc_id = $1
+                ", [RscId], Context)
+    end.
+
 
 %% @doc Count all invoices
 -spec count_invoices(Context) -> Count when
@@ -834,6 +973,71 @@ get_user_subscription(UserId, SubId, Context) ->
             Error
     end.
 
+get_payment(PaymentId, Context) ->
+    case z_db:qmap_props_row("
+        select p.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email,
+               cust.name as name
+        from paysub_payment p
+            left join paysub_customer cust
+            on p.psp = cust.psp
+            and p.psp_customer_id = cust.psp_customer_id
+        where p.id = $1",
+        [ PaymentId ],
+        Context)
+    of
+        {ok, Sub} ->
+            [Sub1] = subscription_add_prices([Sub], Context),
+            {ok, Sub1};
+        {error, _} = Error ->
+            Error
+    end.
+
+get_user_payment(UserId, PaymentId, Context) ->
+    case z_db:qmap_props_row("
+        select p.*,
+               cust.id as customer_id,
+               cust.rsc_id as rsc_id,
+               cust.email as email,
+               cust.name as name
+        from paysub_payment p
+            left join paysub_customer cust
+            on p.psp = cust.psp
+            and p.psp_customer_id = cust.psp_customer_id
+        where p.id = $1
+          and cust.rsc_id = $2",
+        [ PaymentId, UserId ],
+        Context)
+    of
+        {ok, Sub} ->
+            [Sub1] = subscription_add_prices([Sub], Context),
+            {ok, Sub1};
+        {error, _} = Error ->
+            Error
+    end.
+
+user_payments(UserId0, Context) ->
+    case m_rsc:rid(UserId0, Context) of
+        undefined ->
+            {error, enoent};
+        UserId ->
+            z_db:qmap_props("
+                select p.*,
+                       cust.id as customer_id,
+                       cust.rsc_id as rsc_id,
+                       cust.email as email
+                from paysub_payment p
+                    join paysub_customer cust
+                    on p.psp = cust.psp
+                    and p.psp_customer_id = cust.psp_customer_id
+                where p.rsc_id = $1
+                order by p.created desc, id desc",
+                [ UserId ],
+                Context)
+    end.
+
 
 -spec checkout_status(CheckoutNr, Context) -> {ok, map()} | {error, term()} when
     CheckoutNr :: binary(),
@@ -1113,6 +1317,58 @@ delete_price(PSP, PriceId, Context) ->
         0 -> {error, enoent}
     end.
 
+%% @doc Place all found payment (intents) in the database. Do not delete any payment.
+-spec sync_payments(PSP, Payments, Context) -> ok when
+    PSP :: atom() | binary(),
+    Payments :: list( map() ),
+    Context :: z:context().
+sync_payments(PSP, Payments, Context) ->
+    lists:foreach(
+        fun(Payment) ->
+            sync_payment(PSP, Payment, Context)
+        end,
+        Payments).
+
+%% @doc Place a found payment in the database.
+-spec sync_payment(PSP, Payment, Context) -> ok when
+    PSP :: atom() | binary(),
+    Payment :: map(),
+    Context :: z:context().
+sync_payment(PSP, #{ psp_payment_id := PaymentId } = Payment, Context) ->
+    case z_db:q1("
+        select id
+        from paysub_payment
+        where psp = $1
+          and psp_payment_id = $2",
+        [ PSP, PaymentId ],
+        Context)
+    of
+        undefined ->
+            Payment1 = Payment#{ psp => PSP },
+            {ok, _} = z_db:insert(paysub_payment, Payment1, Context);
+        Id ->
+            {ok, _} = z_db:update(paysub_payment, Id, Payment, Context)
+    end,
+    ok.
+
+
+%% @doc Delete a payment.
+-spec delete_payment(PSP, PaymentId, Context) -> ok  | {error, enoent} when
+    PSP :: atom() | binary(),
+    PaymentId :: binary(),
+    Context :: z:context().
+delete_payment(PSP, PaymentId, Context) ->
+    case z_db:q("
+        delete from paysub_payment
+        where psp = $1
+          and psp_payment_id = $2
+        ",
+        [ PSP, PaymentId ],
+        Context)
+    of
+        1 -> ok;
+        0 -> {error, enoent}
+    end.
 
 update_customer_rsc_id(PSP, CustId, RscId, Context) ->
     case z_db:q("
@@ -1362,8 +1618,9 @@ install_tables(Context) ->
                 on update cascade
                 on delete set null
         )", Context),
-
     [] = z_db:q("CREATE INDEX fki_paysub_checkout_rsc_id ON paysub_checkout (rsc_id)", Context),
+    [] = z_db:q("CREATE INDEX paysub_checkout_created_key ON paysub_checkout (created)", Context),
+    [] = z_db:q("CREATE INDEX paysub_checkout_modified_key ON paysub_checkout (modified)", Context),
 
     [] = z_db:q("
         create table paysub_product (
@@ -1406,7 +1663,8 @@ install_tables(Context) ->
 
     [] = z_db:q("CREATE INDEX paysub_price_name_key ON paysub_price (name)", Context),
     [] = z_db:q("CREATE INDEX paysub_price_psp_product_key ON paysub_price (psp, psp_product_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_created_key ON paysub_price (created)", Context),
+    [] = z_db:q("CREATE INDEX paysub_price_created_key ON paysub_price (created)", Context),
+    [] = z_db:q("CREATE INDEX paysub_price_modified_key ON paysub_price (modified)", Context),
 
     [] = z_db:q("
         create table paysub_subscription (
@@ -1432,14 +1690,14 @@ install_tables(Context) ->
             constraint paysub_pkey primary key (id),
             constraint paysub_psp_subscription_id unique (psp, psp_subscription_id)
         )", Context),
-
-    [] = z_db:q("CREATE INDEX paysub_psp_customer_key ON paysub_subscription (psp, psp_customer_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_status_key ON paysub_subscription (status)", Context),
-    [] = z_db:q("CREATE INDEX paysub_started_at_key ON paysub_subscription (started_at)", Context),
-    [] = z_db:q("CREATE INDEX paysub_ended_at_key ON paysub_subscription (ended_at)", Context),
-    [] = z_db:q("CREATE INDEX paysub_period_start_key ON paysub_subscription (period_start)", Context),
-    [] = z_db:q("CREATE INDEX paysub_period_end_at_key ON paysub_subscription (period_end)", Context),
-    [] = z_db:q("CREATE INDEX paysub_modified_key ON paysub_subscription (modified)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_psp_customer_key ON paysub_subscription (psp, psp_customer_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_status_key ON paysub_subscription (status)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_started_at_key ON paysub_subscription (started_at)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_ended_at_key ON paysub_subscription (ended_at)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_period_start_key ON paysub_subscription (period_start)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_period_end_at_key ON paysub_subscription (period_end)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_modified_key ON paysub_subscription (modified)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_created_key ON paysub_subscription (created)", Context),
 
     [] = z_db:q("
         create table paysub_subscription_item (
@@ -1454,8 +1712,8 @@ install_tables(Context) ->
                 on update cascade
                 on delete cascade
         )", Context),
-    [] = z_db:q("CREATE INDEX fki_paysub_subscription_item_subscription_id ON paysub_subscription_item (subscription_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_subscription_item_psp_psp_price_id_key ON paysub_subscription_item (psp, psp_price_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS fki_paysub_subscription_item_subscription_id ON paysub_subscription_item (subscription_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_item_psp_psp_price_id_key ON paysub_subscription_item (psp, psp_price_id)", Context),
 
     [] = z_db:q("
         create table paysub_customer (
@@ -1478,8 +1736,9 @@ install_tables(Context) ->
                 on update cascade
                 on delete set null
         )", Context),
-
-    [] = z_db:q("CREATE INDEX fki_paysub_customer_rsc_id ON paysub_customer (rsc_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS fki_paysub_customer_rsc_id ON paysub_customer (rsc_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_customer_modified_key ON paysub_customer (modified)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_customer_created_key ON paysub_customer (created)", Context),
 
     % payment_status is one of: draft, open, paid, uncollectible, or void
     [] = z_db:q("
@@ -1517,7 +1776,41 @@ install_tables(Context) ->
             constraint paysub_invoice_pkey primary key (id),
             constraint paysub_invoice_psp_invoice_id unique (psp, psp_invoice_id)
         )", Context),
-    [] = z_db:q("CREATE INDEX paysub_invoice_psp_customer_key ON paysub_invoice (psp, psp_customer_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_invoice_psp_customer_key ON paysub_invoice (psp, psp_customer_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_invoice_modified_key ON paysub_invoice (modified)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_invoice_created_key ON paysub_invoice (created)", Context),
+
+    % status is one of: requires_payment_method, requires_confirmation, requires_action, processing,
+    % requires_capture, canceled, or succeeded
+    [] = z_db:q("
+        create table paysub_payment (
+            id serial not null,
+            psp character varying(32) not null,
+            psp_payment_id character varying(128) not null,
+            psp_customer_id character varying(128),
+            psp_invoice_id character varying(128),
+            currency character varying(16) not null default 'EUR'::character varying,
+            amount integer not null,
+            amount_received integer not null,
+
+            name character varying(255),
+            email character varying(255),
+            phone character varying(255),
+
+            status character varying(32) not null default ''::character varying,
+            description character varying (300),
+
+            props_json jsonb,
+            created timestamp with time zone NOT NULL DEFAULT now(),
+            modified timestamp with time zone NOT NULL DEFAULT now(),
+
+            constraint paysub_payment_pkey primary key (id),
+            constraint paysub_payment_psp_payment_intent_id unique (psp, psp_payment_id)
+        )", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_psp_customer_key ON paysub_payment (psp, psp_customer_id)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_modified_key ON paysub_payment (modified)", Context),
+    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_created_key ON paysub_payment (created)", Context),
+
 
     [] = z_db:q("
         create table paysub_log (
@@ -1549,6 +1842,7 @@ drop_tables(Context) ->
     z_db:q("drop table if exists paysub_price", Context),
     z_db:q("drop table if exists paysub_product", Context),
     z_db:q("drop table if exists paysub_checkout", Context),
+    z_db:q("drop table if exists paysub_payment", Context),
     ok.
 
 

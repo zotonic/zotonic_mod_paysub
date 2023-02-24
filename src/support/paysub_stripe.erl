@@ -40,6 +40,10 @@
     checkout_session_create/2,
     checkout_session_sync/2,
 
+    is_customer_portal/2,
+    customer_portal_session_url/2,
+    customer_portal_session_url/3,
+
     sync_products/1,
     sync_prices/1,
 
@@ -77,6 +81,90 @@ event(#submit{ message = {checkout, Args} }, Context) ->
         {error, _} ->
             Context
     end.
+
+
+%% @doc Check if this user id has a known stripe customer id, if so then a
+%% portal session is possible.
+-spec is_customer_portal(UserId, Context) -> boolean() when
+    UserId :: m_rsc:resource(),
+    Context :: z:context().
+is_customer_portal(UserId, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            false;
+        RscId ->
+            case m_paysub:get_customer(stripe, RscId, Context) of
+                {ok, #{
+                    <<"psp_customer_id">> := _
+                }} ->
+                    true;
+                {error, _} ->
+                    false
+            end
+    end.
+
+%% @doc Create a portal session for the user and return the URL to the portal.
+-spec customer_portal_session_url(UserId, Context) -> {ok, Url} | {error, Reason} when
+    UserId :: m_rsc:resource(),
+    Context :: z:context(),
+    Url :: binary(),
+    Reason :: enoent | term().
+customer_portal_session_url(UserId, Context) ->
+    customer_portal_session_url(UserId, undefined, Context).
+
+%% @doc Create a portal session for the user and return the URL to the portal. If the
+%% ReturnUrl is undefined then the user's page url is used instead.
+-spec customer_portal_session_url(UserId, ReturnUrl, Context) -> {ok, Url} | {error, Reason} when
+    UserId :: m_rsc:resource(),
+    ReturnUrl :: binary() | undefined,
+    Context :: z:context(),
+    Url :: binary(),
+    Reason :: enoent | term().
+customer_portal_session_url(UserId, ReturnUrl, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            {error, enoent};
+        RscId ->
+            case m_paysub:get_customer(stripe, RscId, Context) of
+                {ok, #{
+                    <<"psp_customer_id">> := CustomerId
+                }} ->
+                    ReturnUrl1 = case ReturnUrl of
+                        undefined -> m_rsc:p(RscId, page_url_abs, Context);
+                        RUrl -> RUrl
+                    end,
+                    ReturnUrl2 = z_context:abs_url(ReturnUrl1, Context),
+                    Locale = case m_rsc:p(RscId, pref_language, Context) of
+                        undefined -> z_context:language(Context);
+                        Lang -> Lang
+                    end,
+                    Payload = #{
+                        customer => CustomerId,
+                        return_url => ReturnUrl2,
+                        locale => Locale
+                    },
+                    case paysub_stripe_api:fetch(post, ["billing_portal", "sessions"], Payload, Context) of
+                        {ok, #{
+                            <<"url">> := Url
+                        }} ->
+                            {ok, Url};
+                        {error, Reason} = Error ->
+                            ?LOG_WARNING(#{
+                                in => zotonic_mod_paysub,
+                                text => <<"Error fetching Stripe billing portal URL">>,
+                                result => error,
+                                reason => Reason,
+                                psp => stripe,
+                                psp_customer_id => CustomerId,
+                                locale => Locale
+                            }),
+                            Error
+                    end;
+                {error, _} = Error ->
+                    Error
+            end
+    end.
+
 
 %% @doc Start a Stripe checkout for the given payment/subscription request.
 checkout_session_create(Args, Context) ->

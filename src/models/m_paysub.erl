@@ -110,6 +110,15 @@
 m_get([ <<"is_subscriber">>, Id | Rest ], _Msg, Context) ->
     IsSubscriber = is_subscriber(Id, Context),
     {ok, {IsSubscriber, Rest}};
+m_get([ <<"is_customer_portal">>, <<"stripe">> | Rest ], _Msg, Context) ->
+    {ok, {m_paysub_stripe:is_customer_portal(z_acl:user(Context), Context), Rest}};
+m_get([ <<"customer_portal_session_url">>, <<"stripe">> | Rest ], _Msg, Context) ->
+    case m_paysub_stripe:customer_portal_session_url(z_acl:user(Context), Context) of
+        {ok, Url} ->
+            {ok, {Url, Rest}};
+        {error, _} = Error ->
+            Error
+    end;
 m_get([ <<"checkout">>, <<"status">>, CheckoutNr | Rest ], _Msg, Context) ->
     case checkout_status(CheckoutNr, Context) of
         {ok, Status} ->

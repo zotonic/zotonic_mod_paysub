@@ -60,7 +60,22 @@ event(#submit{ message = {product_update, Args} }, Context) ->
             z_render:wire(OnSuccess, Context);
         false ->
             z_render:growl(?__("You are not allowed to edit products.", Context), Context)
+    end;
+event(#postback{ message = {customer_portal, Args} }, Context) ->
+    ReturnUrl = proplists:get_value(return_url, Args),
+    case z_convert:to_binary(proplists:get_value(psp, Args)) of
+        <<"stripe">> ->
+            case paysub_stripe:portal_session_create(z_acl:user(Context), ReturnUrl, Context) of
+                {ok, PortalUrl} ->
+                    z_render:wire({redirect, [{url, PortalUrl}]}, Context);
+                {error, _} ->
+                    z_render:growl(?__("Sorry, can't redirect to the customer portal.", Context), Context)
+            end;
+        _ ->
+            z_render:growl(?__("Sorry, can't redirect to the customer portal.", Context), Context)
     end.
+
+
 
 
 %% @doc Modify the user group based on the active subscriptions. If no subscription found

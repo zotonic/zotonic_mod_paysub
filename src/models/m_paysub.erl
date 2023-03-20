@@ -1657,12 +1657,7 @@ sync_subscription(PSP,  #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Co
     }),
     case z_db:transaction(
         fun(Ctx) ->
-            case sync_subscription_trans(PSP, Sub, PriceIds, Ctx) of
-                {ok, SubId} ->
-                    {ok, SubId};
-                {error, _} = Error ->
-                    Error
-            end
+            sync_subscription_trans(PSP, Sub, PriceIds, Ctx)
         end,
         Context)
     of

@@ -65,7 +65,7 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
     ReturnUrl = proplists:get_value(return_url, Args),
     case z_convert:to_binary(proplists:get_value(psp, Args)) of
         <<"stripe">> ->
-            case paysub_stripe:portal_session_create(z_acl:user(Context), ReturnUrl, Context) of
+            case paysub_stripe:customer_portal_session_url(z_acl:user(Context), ReturnUrl, Context) of
                 {ok, PortalUrl} ->
                     z_render:wire({redirect, [{url, PortalUrl}]}, Context);
                 {error, _} ->

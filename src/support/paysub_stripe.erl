@@ -619,9 +619,10 @@ sync_task_do(invoice, Id, Context) ->
     sync_invoice(Id, Context).
 
 %% @doc Sync a single customer after a webhook event.
--spec sync_customer(Cust, Context) -> ok when
+-spec sync_customer(Cust, Context) -> ok | {error, Reason} when
     Cust :: map() | binary(),
-    Context :: z:context() | atom().
+    Context :: z:context() | atom(),
+    Reason :: term().
 sync_customer(CustId, Site) when is_atom(Site) ->
     Context = z_context:new(Site),
     sync_customer(CustId, Context);
@@ -644,8 +645,9 @@ sync_customer(Cust, Context) ->
     m_paysub:sync_customer(stripe, SCust, Context).
 
 %% @doc Sync all customers in Stripe with customers here.
--spec sync_customers(Context) -> ok | {error, term()} when
-    Context :: z:context().
+-spec sync_customers(Context) -> ok | {error, Reason} when
+    Context :: z:context(),
+    Reason :: term().
 sync_customers(Context) ->
     Payload = #{
         limit => 50

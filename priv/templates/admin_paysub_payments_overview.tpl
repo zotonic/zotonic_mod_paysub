@@ -6,6 +6,9 @@
     <div class="admin-header">
         <h2>
             {_ Payments &amp; Subscriptions &ndash; Payments _}
+            {% if q.qrsc_id %}
+                <a href="{% url paysub_admin_payments_overview %}" class="btn btn-default btn-xs">{_ Show all _}</a>
+            {% endif %}
         </h2>
     </div>
     {% if m.acl.is_admin or m.acl.is_allowed.use.mod_paysub %}
@@ -28,7 +31,7 @@
             </div>
         #}
 
-        {% with m.search.paged[{paysub_payments page=q.page pagelen=100}] as result %}
+        {% with m.search.paged[{paysub_payments rsc_id=q.qrsc_id page=q.page pagelen=100}] as result %}
             <table class="table table-striped do_adminLinkedTable" id="payments">
                 <thead>
                     <tr>

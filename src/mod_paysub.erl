@@ -73,9 +73,52 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
             end;
         _ ->
             z_render:growl(?__("Sorry, can't redirect to the customer portal.", Context), Context)
+    end;
+event(#submit{ message = {set_usernamepw, Args} }, Context) ->
+    {checkout_nr, CheckoutNr} = proplists:lookup(checkout_nr, Args),
+    {user_id, UserId} = proplists:lookup(user_id, Args),
+    case m_paysub:checkout_status(CheckoutNr, Context) of
+        {ok, #{
+            <<"user_info">> := #{
+                <<"user_id">> := UserId,
+                <<"visited">> := undefined,
+                <<"is_expired">> := true
+            }
+        }} ->
+            Username = z_context:get_q_validated(<<"username">>, Context),
+            Password = z_context:get_q_validated(<<"password">>, Context),
+            case m_identity:set_username_pw(UserId, Username, Password, z_acl:sudo(Context)) of
+                ok ->
+                    % Get logon-token and redirect to the user's page
+                    Url = m_rsc:p(UserId, page_url_abs, Context),
+                    z_authentication_tokens:client_logon_and_redirect(UserId, Url, Context),
+                    Context;
+                {error, eexist} ->
+                    z_render:wire({show, [{target, "err-username"}]}, Context);
+                {error, _} ->
+                    z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context)
+            end;
+        {ok, Status} ->
+            ?LOG_ERROR(#{
+                in => mod_paysub,
+                text => <<"Password reset for checkout without expired password">>,
+                result => error,
+                reason => Status,
+                checkout_nr => CheckoutNr,
+                user_id => UserId
+            }),
+            z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context);
+        {error, Reason} ->
+            ?LOG_ERROR(#{
+                in => mod_paysub,
+                text => <<"Password reset for checkout with error">>,
+                result => error,
+                reason => Reason,
+                checkout_nr => CheckoutNr,
+                user_id => UserId
+            }),
+            z_render:wire({alert, [{text, ?__("Sorry, this checkout could not be fetched.", Context)}]}, Context)
     end.
-
-
 
 
 %% @doc Modify the user group based on the active subscriptions. If no subscription found

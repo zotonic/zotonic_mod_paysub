@@ -1,8 +1,8 @@
-%% @copyright 2022 Marc Worrell
+%% @copyright 2022-2023 Marc Worrell
 %% @doc Stripe support for payments and subscriptions.
 %% @end
 
-%% Copyright 2022 Marc Worrrell
+%% Copyright 2022-2023 Marc Worrrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -44,6 +44,8 @@
     customer_portal_session_url/2,
     customer_portal_session_url/3,
 
+    update_customer_task/2,
+
     sync_products/1,
     sync_prices/1,
 
@@ -66,22 +68,37 @@
     delete_payment/2,
 
     schedule_sync/2,
-    async_task/2
+    async_task/2,
+    sync_task/3
     ]).
 
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 %% @doc UI - checkout redirect
-event(#submit{ message = {checkout, Args} }, Context) ->
+event(#postback{ message = {checkout, Args} }, Context) ->
     case checkout_session_create(Args, Context) of
-        {ok, Data} ->
-            ?DEBUG(Data),
-            Context;
+        {ok, Url} ->
+            z_render:wire({redirect, [ {location, Url} ]}, Context);
         {error, _} ->
-            Context
+            z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
+    end;
+event(#postback{ message = {customer_portal, Args} }, Context) ->
+    UserId = z_acl:user(Context),
+    ReturnUrl = case proplists:get_value(return_url, Args) of
+        RUrl when is_binary(RUrl) ->
+            RUrl;
+        Dispatch when is_atom(Dispatch) ->
+            z_dispatcher:url_for(Dispatch, Context);
+        undefined ->
+            undefined
+    end,
+    case customer_portal_session_url(UserId, ReturnUrl, Context) of
+        {ok, Url} ->
+            z_render:wire({redirect, [ {location, Url} ]}, Context);
+        {error, _} ->
+            z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
     end.
-
 
 %% @doc Check if this user id has a known stripe customer id, if so then a
 %% portal session is possible.
@@ -124,17 +141,17 @@ customer_portal_session_url(UserId, ReturnUrl, Context) ->
     case m_rsc:rid(UserId, Context) of
         undefined ->
             {error, enoent};
-        RscId ->
-            case m_paysub:get_customer(stripe, RscId, Context) of
+        UserRscId ->
+            case m_paysub:get_customer(stripe, UserRscId, Context) of
                 {ok, #{
                     <<"psp_customer_id">> := CustomerId
                 }} ->
                     ReturnUrl1 = case ReturnUrl of
-                        undefined -> m_rsc:p(RscId, page_url_abs, Context);
+                        undefined -> m_rsc:p(UserRscId, page_url_abs, Context);
                         RUrl -> RUrl
                     end,
                     ReturnUrl2 = z_context:abs_url(ReturnUrl1, Context),
-                    Locale = case m_rsc:p(RscId, pref_language, Context) of
+                    Locale = case m_rsc:p(UserRscId, pref_language, Context) of
                         undefined -> z_context:language(Context);
                         Lang -> Lang
                     end,
@@ -167,120 +184,180 @@ customer_portal_session_url(UserId, ReturnUrl, Context) ->
 
 
 %% @doc Start a Stripe checkout for the given payment/subscription request.
+-spec checkout_session_create(Args, Context) -> {ok, Url} | {error, Reason} when
+    Args :: proplists:proplist(),
+    Context :: z:context(),
+    Url :: binary(),
+    Reason :: term().
 checkout_session_create(Args, Context) ->
     UserId = z_acl:user(Context),
-    Mode = case proplists:get_value(mode, Args) of
-        undefined -> subscription;
-        <<"subscription">> -> subscription;
-        <<"payment">> -> payment;
-        subscription -> subscription;
-        payment -> payment
-    end,
-    {ok, CheckoutNr} = m_paysub:checkout_create(stripe, UserId, Mode, Args, Context),
-    DoneUrl0 = z_dispatcher:url_for(paysub_psp_done, [ {checkout_nr, CheckoutNr} ], Context),
-    DoneUrl = z_context:abs_url(DoneUrl0, Context),
-    Payload = #{
-        cancel_url => DoneUrl,
-        success_url => DoneUrl,
-        mode => Mode,
-        client_reference_id => CheckoutNr,
-        metadata => #{
-            rsc_id => UserId
-        },
-        line_items => line_items(Mode, Args, Context)
-    },
-    Payload1 = case m_paysub:get_customer(stripe, UserId, Context) of
+    PriceName = proplists:get_value(price, Args),
+    case m_paysub:get_price(stripe, PriceName, Context) of
         {ok, #{
-            <<"psp_customer_id">> := CustId
+            <<"psp_price_id">> := PriceId,
+            <<"is_recurring">> := IsRecurring
         }} ->
-            Payload#{
-                customer => CustId,
-                customer_update => #{
-                    address => true
-                }
-            };
-        {error, enoent} when UserId =/= undefined ->
-            PE1 = case m_rsc:p_no_acl(UserId, email_raw, Context) of
-                undefined ->
-                    Payload;
-                Email ->
-                    Payload#{
-                        customer_email => Email
-                    }
+            Mode = case proplists:get_value(mode, Args) of
+                undefined when IsRecurring -> subscription;
+                undefined when not IsRecurring -> payment;
+                <<"subscription">> -> subscription;
+                <<"payment">> -> payment;
+                subscription -> subscription;
+                payment -> payment
             end,
-            PE2 = PE1#{
-                consent_collection => #{
-                    terms_of_service => required
-                }
+            {ok, CheckoutNr} = m_paysub:checkout_create(stripe, UserId, Mode, Args, Context),
+            DoneUrl0 = z_dispatcher:url_for(paysub_psp_done, [ {checkout_nr, CheckoutNr} ], Context),
+            DoneUrl = z_context:abs_url(DoneUrl0, Context),
+            CancelUrl0 = case proplists:get_value(cancel_url, Args) of
+                undefined -> z_dispatcher:url_for(paysub_psp_cancel, [ {checkout_nr, CheckoutNr} ], Context);
+                <<>> -> z_dispatcher:url_for(paysub_psp_cancel, [ {checkout_nr, CheckoutNr} ], Context);
+                CUrl -> CUrl
+            end,
+            CancelUrl = z_context:abs_url(CancelUrl0, Context),
+            AdminUrl = case UserId of
+                undefined -> undefined;
+                _ -> z_context:abs_url(z_dispatcher:url_for(admin_edit_rsc, [ {id, UserId} ], Context), Context)
+            end,
+            Payload = #{
+                cancel_url => CancelUrl,
+                success_url => DoneUrl,
+                mode => Mode,
+                client_reference_id => CheckoutNr,
+                metadata => #{
+                    rsc_id => UserId,
+                    page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),
+                    admin_url => AdminUrl
+                },
+                line_items => [
+                    #{
+                        price => PriceId,
+                        quantity => 1
+                    }
+                ]
             },
-            case Mode of
-                subscription ->
-                    PE2#{
-                        subscription_data => #{
-                            metadata => #{
-                                rsc_id => UserId
-                            }
+            Payload1 = case m_paysub:get_customer(stripe, UserId, Context) of
+                {ok, #{
+                    <<"psp_customer_id">> := CustId
+                }} when is_binary(CustId) ->
+                    Payload#{
+                        customer => CustId,
+                        customer_update => #{
+                            address => auto
                         }
                     };
-                payment ->
-                    PE2#{
-                        invoice_creation => #{
-                            enabled => true
+                {error, enoent} when UserId =/= undefined ->
+                    PE1 = case m_rsc:p_no_acl(UserId, email_raw, Context) of
+                        undefined ->
+                            Payload;
+                        Email ->
+                            Payload#{
+                                customer_email => Email
+                            }
+                    end,
+                    PE2 = PE1#{
+                        consent_collection => #{
+                            terms_of_service => required
+                        }
+                    },
+                    case Mode of
+                        subscription ->
+                            PE2#{
+                                billing_address_collection => required,
+                                subscription_data => #{
+                                    metadata => #{
+                                        rsc_id => UserId,
+                                        page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),
+                                        admin_url => AdminUrl
+                                    }
+                                }
+                            };
+                        payment ->
+                            PE2#{
+                                customer_creation => always,
+                                billing_address_collection => auto,
+                                invoice_creation => #{
+                                    enabled => true
+                                }
+                            }
+                    end;
+                {error, enoent} when UserId =:= undefined, Mode =:= payment ->
+                    Payload#{
+                        customer_creation => always,
+                        billing_address_collection => auto,
+                        consent_collection => #{
+                            terms_of_service => required
+                        }
+                    };
+                {error, enoent} when UserId =:= undefined, Mode =:= subscription ->
+                    Payload#{
+                        billing_address_collection => required,
+                        consent_collection => #{
+                            terms_of_service => required
+                        },
+                        subscription_data => #{
+                            metadata => #{
+                            }
                         }
                     }
+            end,
+            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload1, Context) of
+                {ok, #{
+                    <<"url">> := Url,
+                    <<"id">> := PspCheckoutId,
+                    <<"status">> := Status,
+                    <<"payment_status">> := PaymentStatus,
+                    <<"currency">> := Currency,
+                    <<"amount_total">> := Amount
+                }} ->
+                    Update = #{
+                        psp_checkout_id => PspCheckoutId,
+                        status => Status,
+                        payment_status => PaymentStatus,
+                        currency => z_string:to_upper(Currency),
+                        amount => Amount
+                    },
+                    m_paysub:checkout_update(stripe, CheckoutNr, Update, Context),
+                    {ok, Url};
+                {error, Reason} = Error ->
+                    ?LOG_ERROR(#{
+                        in => zotonic_mod_paysub,
+                        text => <<"Stripe: Unable to create checkout session.">>,
+                        result => error,
+                        reason => Reason,
+                        psp => stripe,
+                        price => PriceName,
+                        price_id => PriceId,
+                        mode => Mode,
+                        checkout_session => CheckoutNr
+                    }),
+                    Error
             end;
-        {error, enoent} when UserId =:= undefined, Mode =:= payment ->
-            Payload;
-        {error, enoent} when UserId =:= undefined, Mode =:= subscription ->
-            Payload#{
-                consent_collection => #{
-                    terms_of_service => required
-                },
-                subscription_data => #{
-                    metadata => #{
-                        rsc_id => UserId
-                    }
-                }
-            }
-    end,
-    case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload1, Context) of
-        {ok, #{
-            <<"url">> := Url,
-            <<"id">> := PspCheckoutId,
-            <<"status">> := Status,
-            <<"payment_status">> := PaymentStatus,
-            <<"currency">> := Currency,
-            <<"amount_total">> := Amount
-        }} ->
-            Update = #{
-                psp_checkout_id => PspCheckoutId,
-                status => Status,
-                payment_status => PaymentStatus,
-                currency => z_string:to_upper(Currency),
-                amount => Amount
-            },
-            m_paysub:checkout_update(stripe, CheckoutNr, Update, Context),
-            {ok, Url};
-        {error, _} = Error ->
+        {error, Reason} = Error ->
+            ?LOG_ERROR(#{
+                in => zotonic_mod_paysub,
+                text => <<"Stripe: price for checkout link could not be fetched.">>,
+                result => error,
+                reason => Reason,
+                psp => stripe,
+                price => PriceName
+            }),
             Error
     end.
 
 
-line_items(payment, Args, Context) ->
-    % TODO: figure out line items for individual payments
-    [];
-line_items(subscription, Args, _Context) ->
-    {price, Price} = proplists:lookup(price, Args),
-    [
-        #{
-            price => Price,
-            quantity => 1
-        }
-    ].
-
-
 %% @doc Called by the controller_subscription_stripe_redirect to handle incoming
 %% webhook events.
+-spec checkout_session_sync(Session, Context) -> ok | {error, Reason} when
+    Session :: map() | binary(),
+    Context :: z:context(),
+    Reason :: term().
+checkout_session_sync(SessionId, Context) when is_binary(SessionId) ->
+    case paysub_stripe_api:fetch(get, [ <<"checkout">>, <<"sessions">>, SessionId ], undefined, Context) of
+        {ok, Session} ->
+            checkout_session_sync(Session, Context);
+        {error, _} = Error ->
+            Error
+    end;
 checkout_session_sync(Session, Context) ->
     #{
         <<"id">> := _CheckoutId,
@@ -300,6 +377,81 @@ checkout_session_sync(Session, Context) ->
     },
     m_paysub:checkout_update(stripe, CheckoutNr, Update, Context),
     ok.
+
+%% @doc Update the rsc_id, metadata and billing address of customer in Stripe. This is called from
+%% a async task, and can return a {delay, ...} tuple if Stripe can't be reached.
+-spec update_customer_task(PSPCustomerId, Context) -> ok | {delay, pos_integer()} when
+    PSPCustomerId :: binary(),
+    Context :: z:context().
+update_customer_task(PSPCustomerId, Context) ->
+    case m_paysub:get_customer(stripe, PSPCustomerId, Context) of
+        {ok, #{
+            <<"rsc_id">> := RscId
+        }} ->
+            Cust = case RscId of
+                undefined ->
+                    #{
+                        <<"metadata">> => #{
+                            <<"rsc_id">> => undefined,
+                            <<"page_url">> => undefined,
+                            <<"admin_url">> => undefined
+                        }
+                    };
+                _ ->
+                    ContextSudo = z_acl:sudo(Context),
+                    AdminUrl = z_dispatcher:url_for(admin_edit_rsc, [ {id, RscId} ], Context),
+                    {Name, _} = z_template:render_to_iolist("_name.tpl", [ {id, RscId} ], ContextSudo),
+                    #{
+                        <<"name">> => z_string:trim(iolist_to_binary(Name)),
+                        <<"address">> => billing_address(RscId, ContextSudo),
+                        <<"email">> => billing_email(RscId, ContextSudo),
+                        <<"phone">> => truncate(m_rsc:p_no_acl(RscId, <<"phone">>, ContextSudo), 19),
+                        <<"preferred_locales">> => [ bin(pref_language(RscId, ContextSudo)) ],
+                        <<"metadata">> => #{
+                            <<"rsc_id">> => RscId,
+                            <<"page_url">> => m_rsc:p_no_acl(RscId, page_url_abs, ContextSudo),
+                            <<"admin_url">> => z_context:abs_url(AdminUrl, Context)
+                        }
+                    }
+            end,
+            Path = [ <<"customers">>, PSPCustomerId ],
+            case paysub_stripe_api:fetch(post, Path, Cust, Context) of
+                {ok, _} ->
+                    ?LOG_INFO(#{
+                        in => zotonic_mod_paysub,
+                        text => <<"Updated customer details at Stripe">>,
+                        result => ok,
+                        psp => stripe,
+                        psp_customer_id => PSPCustomerId,
+                        rsc_id => RscId
+                    }),
+                    ok;
+                {error, Reason} when Reason =:= enoent ->
+                    ?LOG_WARNING(#{
+                        in => zotonic_mod_paysub,
+                        text => <<"Stripe error updating customer details">>,
+                        result => error,
+                        reason => Reason,
+                        psp => stripe,
+                        psp_customer_id => PSPCustomerId,
+                        rsc_id => RscId
+                    }),
+                    ok;
+                {error, Reason} ->
+                    ?LOG_ERROR(#{
+                        in => zotonic_mod_paysub,
+                        text => <<"Stripe error updating customer details">>,
+                        result => error,
+                        reason => Reason,
+                        psp => stripe,
+                        psp_customer_id => PSPCustomerId,
+                        rsc_id => RscId
+                    }),
+                    {delay, 600}
+            end;
+        {error, enoent} ->
+            ok
+    end.
 
 
 %% @doc Sync all products in Stripe with products here.
@@ -442,12 +594,51 @@ async_task(products, Context) ->
     sync_products(Context).
 
 
+-spec sync_task(What, StripeId, Context) -> ok | Retry when
+    What :: customer | subscription | payment | invoice,
+    StripeId :: binary(),
+    Context :: z:context(),
+    Retry :: {delay, pos_integer()}.
+sync_task(What, StripeId, Context) ->
+    case sync_task_do(What, StripeId, Context) of
+        ok ->
+            ok;
+        {error, enoent} ->
+            ok;
+        {error, _} ->
+            {delay, 120}
+    end.
 
+sync_task_do(customer, Id, Context) ->
+    sync_customer(Id, Context);
+sync_task_do(subscription, Id, Context) ->
+    sync_subscription(Id, Context);
+sync_task_do(payment, Id, Context) ->
+    sync_payment(Id, Context);
+sync_task_do(invoice, Id, Context) ->
+    sync_invoice(Id, Context).
 
 %% @doc Sync a single customer after a webhook event.
 -spec sync_customer(Cust, Context) -> ok when
-    Cust :: map(),
-    Context :: z:context().
+    Cust :: map() | binary(),
+    Context :: z:context() | atom().
+sync_customer(CustId, Site) when is_atom(Site) ->
+    Context = z_context:new(Site),
+    sync_customer(CustId, Context);
+sync_customer(CustId, Context) when is_binary(CustId) ->
+    case paysub_stripe_api:fetch(get, [ <<"customers">>, CustId ], undefined, Context) of
+        {ok, Cust} ->
+            case sync_customer(Cust, Context) of
+                ok ->
+                    UniqueKey = <<"paysub-stripe-", CustId/binary>>,
+                    z_pivot_rsc:delete_task(paysub_stripe, sync_task, UniqueKey, Context),
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end;
 sync_customer(Cust, Context) ->
     SCust = stripe_customer(Cust, Context),
     m_paysub:sync_customer(stripe, SCust, Context).
@@ -486,17 +677,18 @@ stripe_customer(#{
         name => z_convert:to_binary(Name),
         email => Email,
         pref_language => pref_lang(Cust, Context),
-        address_country => adr_country(Cust)
+        phone => maps:get(<<"phone">>, Cust, undefined)
     },
-    case maybe_user_id(Cust) of
+    P1 = maybe_add_address(Cust, P),
+    case maybe_user_id(Cust, Context) of
         undefined ->
-            P;
+            P1;
         UserId ->
             UserId1 = case m_rsc:exists(UserId, Context) of
                 true -> UserId;
                 false -> undefined
             end,
-            P#{
+            P1#{
                 rsc_id => UserId1
             }
     end.
@@ -618,11 +810,26 @@ bin(V) ->
 %% @doc Update a single subscription after a webhook event. Optionally
 %% copy the rsc_id from the sub metadata to the customer metadata.
 -spec sync_subscription(Sub, Context) -> ok | {error, enoent} when
-    Sub :: map(),
-    Context :: z:context().
+    Sub :: map() | binary(),
+    Context :: z:context() | atom().
+sync_subscription(SubId, Site) when is_atom(Site) ->
+    Context = z_context:new(Site),
+    sync_subscription(SubId, Context);
+sync_subscription(SubId, Context) when is_binary(SubId) ->
+    case paysub_stripe_api:fetch(get, [ <<"subscriptions">>, SubId ], undefined, Context) of
+        {ok, Sub} ->
+            case sync_subscription(Sub, Context) of
+                ok ->
+                    UniqueKey = <<"paysub-stripe-", SubId/binary>>,
+                    z_pivot_rsc:delete_task(paysub_stripe, sync_task, UniqueKey, Context),
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end;
 sync_subscription(Sub, Context) ->
-    % TODO:
-    % - Optional rsc_id from metadata -> check with current customer
     SSub = stripe_subscription(Sub, Context),
     PriceIds = stripe_subscription_prices(Sub),
     ok = m_paysub:sync_subscription(stripe, SSub, PriceIds, Context),
@@ -636,6 +843,8 @@ stripe_subscription(#{
         <<"status">> := Status,
         <<"canceled_at">> := CanceledAt,
         <<"cancel_at">> := CancelAt,
+        <<"start_date">> := StartDate,
+        <<"ended_at">> := EndDate,
         <<"current_period_start">> := CurrPeriodStart,
         <<"current_period_end">> := CurrPeriodEnd,
         <<"trial_start">> := TrialStart,
@@ -646,6 +855,8 @@ stripe_subscription(#{
         psp_subscription_id => Id,
         psp_customer_id => CustomerId,
         status => Status,
+        started_at => timestamp_to_datetime(StartDate),
+        ended_at => timestamp_to_datetime(EndDate),
         period_start => timestamp_to_datetime(CurrPeriodStart),
         period_end => timestamp_to_datetime(CurrPeriodEnd),
         trial_start => timestamp_to_datetime(TrialStart),
@@ -653,7 +864,7 @@ stripe_subscription(#{
         canceled_at => timestamp_to_datetime(CanceledAt),
         cancel_at => timestamp_to_datetime(CancelAt)
     },
-    case m_rsc:rid(maybe_user_id(Sub), Context) of
+    case m_rsc:rid(maybe_user_id(Sub, Context), Context) of
         undefined ->
             PspSub;
         RscId ->
@@ -775,7 +986,24 @@ sync_invoices(Context) ->
     end.
 
 %% @doc Sync an invoice received via Stripe webhook.
-sync_invoice(Inv, Context) ->
+sync_invoice(InvId, Site) when is_atom(Site) ->
+    Context = z_context:new(Site),
+    sync_invoice(InvId, Context);
+sync_invoice(InvId, Context) when is_binary(InvId) ->
+    case paysub_stripe_api:fetch(get, [ <<"invoices">>, InvId ], undefined, Context) of
+        {ok, Inv} ->
+            case sync_invoice(Inv, Context) of
+                ok ->
+                    UniqueKey = <<"paysub-stripe-", InvId/binary>>,
+                    z_pivot_rsc:delete_task(paysub_stripe, sync_task, UniqueKey, Context),
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end;
+sync_invoice(Inv, Context) when is_map(Inv) ->
     Inv1 = stripe_invoice(Inv, Context),
     m_paysub:sync_invoice(stripe, Inv1, Context).
 
@@ -860,8 +1088,8 @@ maybe_add_address(#{
             <<"state">> := CustomerState,
             <<"postal_code">> := CustomerPostcode
         }
-    }, Invoice) ->
-    Invoice#{
+    }, Rec) ->
+    Rec#{
         address_country => z_string:to_lower(CustomerCountry),
         address_street_1 => CustomerLine1,
         address_street_2 => CustomerLine2,
@@ -869,29 +1097,48 @@ maybe_add_address(#{
         address_postcode => CustomerPostcode,
         address_state => CustomerState
     };
-maybe_add_address(_, Invoice) ->
-    Invoice.
+maybe_add_address(#{
+        <<"address">> := #{
+            <<"country">> := CustomerCountry,
+            <<"line1">> := CustomerLine1,
+            <<"line2">> := CustomerLine2,
+            <<"city">> := CustomerCity,
+            <<"state">> := CustomerState,
+            <<"postal_code">> := CustomerPostcode
+        }
+    }, Rec) ->
+    Rec#{
+        address_country => z_string:to_lower(CustomerCountry),
+        address_street_1 => CustomerLine1,
+        address_street_2 => CustomerLine2,
+        address_city => CustomerCity,
+        address_postcode => CustomerPostcode,
+        address_state => CustomerState
+    };
+maybe_add_address(_, Rec) ->
+    Rec.
 
 timestamp_to_datetime(undefined) ->
     undefined;
 timestamp_to_datetime(DT) ->
     z_datetime:timestamp_to_datetime(DT).
 
-maybe_user_id(#{ <<"metadata">> := #{ <<"rsc_id">> := UserId }}) ->
+maybe_user_id(#{ <<"metadata">> := #{ <<"rsc_id">> := UserId }}, _Context) ->
     z_convert:to_integer(UserId);
-maybe_user_id(#{ <<"metadata">> := #{ <<"user_id">> := UserId }}) ->
+maybe_user_id(#{ <<"metadata">> := #{ <<"user_id">> := UserId }}, _Context) ->
     z_convert:to_integer(UserId);
-maybe_user_id(_) -> undefined.
+maybe_user_id(#{ <<"customer">> := CustId }, Context) when is_binary(CustId) ->
+    case m_paysub:get_customer(stripe, CustId, Context) of
+        {ok, #{ <<"rsc_id">> := UserId }} -> UserId;
+        {error, _} -> undefined
+    end;
+maybe_user_id(_, _Context)  ->
+    undefined.
 
 pref_lang(#{ <<"preferred_locales">> := [ Locale | _ ]}, _Context) ->
     hd(binary:split(Locale, <<"-">>));
 pref_lang(_, Context) ->
     z_context:language(Context).
-
-adr_country(#{ <<"address">> := #{ <<"country">> := Country } }) when is_binary(Country) ->
-    z_string:to_lower(Country);
-adr_country(_) ->
-    undefined.
 
 
 %% @doc Sync all payment intents in Stripe with payments here.
@@ -919,7 +1166,25 @@ sync_payments(Context) ->
             Error
     end.
 
+
 %% @doc Sync a payment intent received via Stripe webhook.
+sync_payment(PaymentId, Site) when is_atom(Site) ->
+    Context = z_context:new(Site),
+    sync_payment(PaymentId, Context);
+sync_payment(PaymentId, Context) when is_binary(PaymentId) ->
+    case paysub_stripe_api:fetch(get, [ <<"payment_intents">>, PaymentId ], undefined, Context) of
+        {ok, Payment} ->
+            case sync_payment(Payment, Context) of
+                ok ->
+                    UniqueKey = <<"paysub-stripe-", PaymentId/binary>>,
+                    z_pivot_rsc:delete_task(paysub_stripe, sync_task, UniqueKey, Context),
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end;
 sync_payment(PaymentObject, Context) ->
     Payment1 = stripe_payment(PaymentObject, Context),
     m_paysub:sync_payment(stripe, Payment1, Context).
@@ -943,7 +1208,6 @@ stripe_payment(#{
         <<"invoice">> := InvoiceId,
         <<"created">> := Created
     } = P, _Context) ->
-    io:format("~p~n", [ P ]),
     Payment = payment_name_details(P),
     Payment#{
         psp_payment_id => Id,
@@ -995,7 +1259,6 @@ fetch_all({ok, #{
         <<"object">> := <<"list">>,
         <<"has_more">> := true
     }}, Path, Payload, Acc, Context) ->
-    ?DEBUG(length(List)),
     P1 = Payload#{
         starting_after => last_id(List)
     },

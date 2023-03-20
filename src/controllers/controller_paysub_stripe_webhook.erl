@@ -55,6 +55,8 @@ process(<<"POST">>, _AcceptedCT, _ProvidedCT, Context) ->
     case handle(EventType, Parsed, Context) of
         ok ->
             {true, Context};
+        {ok, _} ->
+            {true, Context};
         % {error, session_data} ->
         %     {{halt, 404}, Context};
         {error, _} ->
@@ -77,12 +79,17 @@ handle(<<"checkout.session.async_payment_succeeded">>, Payload, Context) ->
 handle(<<"checkout.session.completed">>, Payload, Context) ->
     % Payment is successful and the subscription is created.
     % You should provision the subscription and save the customer ID to your database.
-    ?DEBUG(Payload),
     sync_session(Payload, Context);
 handle(<<"checkout.session.expired">>, Payload, Context) ->
     sync_session(Payload, Context);
 
 handle(<<"invoice.created">>, Payload, Context) ->
+    sync_invoice(Payload, Context);
+handle(<<"invoice.updated">>, Payload, Context) ->
+    sync_invoice(Payload, Context);
+handle(<<"invoice.voided">>, Payload, Context) ->
+    sync_invoice(Payload, Context);
+handle(<<"invoice.finalized">>, Payload, Context) ->
     sync_invoice(Payload, Context);
 handle(<<"invoice.paid">>, Payload, Context) ->
     % Continue to provision the subscription as payments continue to be made.
@@ -96,14 +103,10 @@ handle(<<"invoice.payment_failed">>, Payload, Context) ->
     sync_invoice(Payload, Context);
 handle(<<"invoice.deleted">>, Payload, Context) ->
     delete_invoice(Payload, Context);
+handle(<<"invoice.", _/binary>>, _Payload, _Context) ->
+    ok;
 
-%     when 'invoice.created'
-%         invoice = event.data.object
-%     when 'invoice.deleted'
-%         invoice = event.data.object
 %     when 'invoice.finalization_failed'
-%         invoice = event.data.object
-%     when 'invoice.finalized'
 %         invoice = event.data.object
 %     when 'invoice.marked_uncollectible'
 %         invoice = event.data.object
@@ -114,10 +117,6 @@ handle(<<"invoice.deleted">>, Payload, Context) ->
 %     when 'invoice.sent'
 %         invoice = event.data.object
 %     when 'invoice.upcoming'
-%         invoice = event.data.object
-%     when 'invoice.updated'
-%         invoice = event.data.object
-%     when 'invoice.voided'
 %         invoice = event.data.object
 
 handle(<<"customer.created">>, Ps, Context) ->
@@ -132,7 +131,7 @@ handle(<<"customer.subscription.created">>, Ps, Context) ->
 handle(<<"customer.subscription.updated">>, Ps, Context) ->
     sync_subscription(Ps, Context);
 handle(<<"customer.subscription.deleted">>, Ps, Context) ->
-    delete_subscription(Ps, Context);
+    sync_subscription(Ps, Context);
 handle(<<"customer.", _/binary>> = Type, Ps, _Context) ->
     ?DEBUG(Type),
     ?DEBUG(Ps),
@@ -165,11 +164,11 @@ sync_session(#{
         <<"data">> := #{
             <<"object">> := #{
                 <<"object">> := <<"checkout.session">>,
-                <<"id">> := _SessionId
-            } = Session
+                <<"id">> := SessionId
+            }
         }
     }, Context) ->
-    paysub_stripe:checkout_session_sync(Session, Context);
+    paysub_stripe:checkout_session_sync(SessionId, Context);
 sync_session(Payload, _Context) ->
     ?LOG_ERROR(#{
         in => zotonic_mod_paysub,
@@ -181,29 +180,74 @@ sync_session(Payload, _Context) ->
     }),
     {error, payload}.
 
-sync_customer(#{ <<"data">> := #{ <<"object">> := Cust }}, Context) ->
-    paysub_stripe:sync_customer(Cust, Context).
+sync_customer(#{ <<"data">> := #{
+        <<"object">> := #{
+            <<"id">> := CustId,
+            <<"object">> := <<"customer">>
+        }
+    }}, Context) ->
+    UniqueKey = <<"paysub-stripe-", CustId/binary>>,
+    z_pivot_rsc:insert_task_after(5, paysub_stripe, sync_task, UniqueKey, [ customer, CustId ], Context),
+    Args = [
+        CustId,
+        z_context:site(Context)
+    ],
+    buffalo:queue({paysub_stripe, sync_customer, Args}, #{ timeout => 100, deadline => 250 }).
 
 delete_customer(#{ <<"data">> := #{ <<"object">> := Cust }}, Context) ->
     _ = paysub_stripe:delete_customer(Cust, Context),
     ok.
 
-sync_subscription(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
-    paysub_stripe:sync_subscription(Sub, Context).
+sync_subscription(#{
+    <<"data">> := #{
+        <<"object">> := #{
+            <<"id">> := SubId,
+            <<"object">> := <<"subscription">>
+        }
+    }}, Context) ->
+    UniqueKey = <<"paysub-stripe-", SubId/binary>>,
+    z_pivot_rsc:insert_task_after(5, paysub_stripe, sync_task, UniqueKey, [ subscription, SubId ], Context),
+    Args = [
+        SubId,
+        z_context:site(Context)
+    ],
+    buffalo:queue({paysub_stripe, sync_subscription, Args}, #{ timeout => 100, deadline => 250 }).
 
-delete_subscription(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
-    _ = paysub_stripe:delete_subscription(Sub, Context),
-    ok.
-
-sync_invoice(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
-    paysub_stripe:sync_invoice(Sub, Context).
+% delete_subscription(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
+%     _ = paysub_stripe:delete_subscription(Sub, Context),
+%     ok.
 
 delete_invoice(#{ <<"data">> := #{ <<"object">> := Sub }}, Context) ->
     _ = paysub_stripe:delete_invoice(Sub, Context),
     ok.
 
-sync_payment(#{ <<"data">> := #{ <<"object">> := PaymentIntent }}, Context) ->
-    paysub_stripe:sync_payment(PaymentIntent, Context).
+sync_payment(#{ <<"data">> := #{
+        <<"object">> := #{
+            <<"id">> := PaymentId,
+            <<"object">> := <<"payment_intent">>
+        }
+    }}, Context) ->
+    UniqueKey = <<"paysub-stripe-", PaymentId/binary>>,
+    z_pivot_rsc:insert_task_after(5, paysub_stripe, sync_task, UniqueKey, [ payment, PaymentId ], Context),
+    Args = [
+        PaymentId,
+        z_context:site(Context)
+    ],
+    buffalo:queue({paysub_stripe, sync_payment, Args}, #{ timeout => 1000, deadline => 2000 }).
+
+sync_invoice(#{ <<"data">> := #{
+        <<"object">> := #{
+            <<"id">> := InvId,
+            <<"object">> := <<"invoice">>
+        }
+    }}, Context) ->
+    UniqueKey = <<"paysub-stripe-", InvId/binary>>,
+    z_pivot_rsc:insert_task_after(10, paysub_stripe, sync_task, UniqueKey, [ invoice, InvId ], Context),
+    Args = [
+        InvId,
+        z_context:site(Context)
+    ],
+    buffalo:queue({paysub_stripe, sync_invoice, Args}, #{ timeout => 1000, deadline => 2000 }).
 
 
 is_valid_signature(Body, Context) ->

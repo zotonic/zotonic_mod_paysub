@@ -49,7 +49,7 @@ fetch(Method, [ P | _ ] = Path, Payload, Context) when is_list(P); is_binary(P) 
                 {content_type, "application/x-www-form-urlencoded"}
             ],
             Body = flatten(Payload),
-            case Method of
+            Result = case Method of
                 post ->
                     z_fetch:fetch_json(Method, Url, Body, Options, Context);
                 put ->
@@ -58,8 +58,42 @@ fetch(Method, [ P | _ ] = Path, Payload, Context) when is_list(P); is_binary(P) 
                     z_fetch:fetch_json(Method, qarg(Url, Body), <<>>, Options, Context);
                 delete ->
                     z_fetch:fetch_json(Method, qarg(Url, Body), <<>>, Options, Context)
+            end,
+            case Result of
+                {ok, _} = Ok ->
+                    Ok;
+                {error,{404, _FinalUrl, _Hs, _Size, _Body}} ->
+                    {error, enoent};
+                {error,{Code, _FinalUrl, _Hs, _Size, Body}} ->
+                    ?LOG_ERROR(#{
+                        in => zotonic_mod_paysub,
+                        text => <<"Stripe: error fetching data from API">>,
+                        result => error,
+                        reason => http_error(Code),
+                        http_status => Code,
+                        url => Url,
+                        method => Method,
+                        body => Body
+                    }),
+                    {error, http_error(Code)};
+                {error, Reason} ->
+                    ?LOG_ERROR(#{
+                        in => zotonic_mod_paysub,
+                        text => <<"Stripe: error fetching data from API">>,
+                        result => error,
+                        reason => Reason,
+                        url => Url,
+                        method => Method,
+                        body => Body
+                    }),
+                    {error, Reason}
             end
     end.
+
+http_error(404) -> enoent;
+http_error(403) -> eacces;
+http_error(401) -> eacces;
+http_error(Code) -> Code.
 
 qarg(Url, <<>>) -> Url;
 qarg(Url, Qs) -> <<Url/binary, $?, Qs/binary>>.

@@ -1,8 +1,11 @@
 [
-    {paysub_stripe_webhook, [ "subscription", "stripe", "webhook" ], controller_paysub_stripe_webhook, []},
+    {paysub_stripe_webhook, [ "paysub", "stripe", "webhook" ], controller_paysub_stripe_webhook, []},
 
     {paysub_psp_done, [ "payment", "done", checkout_nr ], controller_template,
             [ {template, "paysub_psp_done.tpl"} ]},
+    {paysub_psp_cancel, [ "payment", "cancel", checkout_nr ], controller_template,
+            [ {template, "paysub_psp_done.tpl"}, is_canceled ]},
+
     {paysub_admin_invoices_overview, [ "admin", "paysub", "invoices" ], controller_admin,
             [ {template, "admin_paysub_invoices_overview.tpl"} ]},
     {paysub_admin_subscriptions_overview, [ "admin", "paysub", "subscriptions" ], controller_admin,

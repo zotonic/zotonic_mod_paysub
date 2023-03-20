@@ -1957,6 +1957,40 @@ install(Context) ->
             z_db:flush(Context),
             ok;
         true ->
+            case z_db:table_exists(paysub_payment, Context) of
+                false ->
+                    [] = z_db:q("
+                        create table paysub_payment (
+                            id serial not null,
+                            psp character varying(32) not null,
+                            psp_payment_id character varying(128) not null,
+                            psp_customer_id character varying(128),
+                            psp_invoice_id character varying(128),
+                            currency character varying(16) not null default 'EUR'::character varying,
+                            amount integer not null,
+                            amount_received integer not null,
+
+                            name character varying(255),
+                            email character varying(255),
+                            phone character varying(255),
+
+                            status character varying(32) not null default ''::character varying,
+                            description character varying (300),
+
+                            props_json jsonb,
+                            created timestamp with time zone NOT NULL DEFAULT now(),
+                            modified timestamp with time zone NOT NULL DEFAULT now(),
+
+                            constraint paysub_payment_pkey primary key (id),
+                            constraint paysub_payment_psp_payment_intent_id unique (psp, psp_payment_id)
+                        )", Context),
+                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_psp_customer_key ON paysub_payment (psp, psp_customer_id)", Context),
+                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_modified_key ON paysub_payment (modified)", Context),
+                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_created_key ON paysub_payment (created)", Context),
+                    z_db:flush(Context);
+                true ->
+                    ok
+            end,
             case z_db:column_exists(paysub_customer, phone, Context) of
                 false ->
                     [] = z_db:q("

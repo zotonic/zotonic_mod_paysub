@@ -22,7 +22,7 @@
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication ]).
--mod_schema(2).
+-mod_schema(3).
 
 -author("Marc Worrell <marc@worrell.nl>").
 

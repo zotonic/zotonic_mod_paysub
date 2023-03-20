@@ -21,7 +21,7 @@
 -mod_title("Paid subscriptions").
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
--mod_depends([]).
+-mod_depends([ mod_authentication ]).
 -mod_schema(2).
 
 -author("Marc Worrell <marc@worrell.nl>").
@@ -91,8 +91,32 @@ event(#submit{ message = {set_usernamepw, Args} }, Context) ->
                 ok ->
                     % Get logon-token and redirect to the user's page
                     Url = m_rsc:p(UserId, page_url_abs, Context),
-                    z_authentication_tokens:client_logon_and_redirect(UserId, Url, Context),
-                    Context;
+                    case z_notifier:first(#auth_client_logon_user{ user_id = UserId, url = Url }, Context) of
+                        ok ->
+                            Context;
+                        {error, Reason} ->
+                            ?LOG_ERROR(#{
+                                in => mod_paysub,
+                                text => <<"Paysub could not logon new user and redirect">>,
+                                result => error,
+                                reason => Reason,
+                                checkout_nr => CheckoutNr,
+                                user_id => UserId,
+                                url => Url
+                            }),
+                            z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context);
+                        undefined ->
+                            ?LOG_ERROR(#{
+                                in => mod_paysub,
+                                text => <<"Paysub could not logon new user and redirect: no handler">>,
+                                result => error,
+                                reason => auth_client_logon_user,
+                                checkout_nr => CheckoutNr,
+                                user_id => UserId,
+                                url => Url
+                            }),
+                            z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context)
+                    end;
                 {error, eexist} ->
                     z_render:wire({show, [{target, "err-username"}]}, Context);
                 {error, _} ->

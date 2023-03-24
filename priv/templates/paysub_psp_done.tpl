@@ -126,10 +126,7 @@ Page to show when returned from PSP
                             </div>
                         </form>
                     {% elseif payment.args.referring_id.payment_done_html %}
-                        WOULD REDIRECT
-                        {#
                         {% wire action={redirect dispatch=`paysub_psp_done_welcome` id=payment.args.referring_id} %}
-                        #}
                     {% endif %}
                 {% endif %}
 

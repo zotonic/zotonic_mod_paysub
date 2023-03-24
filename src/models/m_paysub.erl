@@ -2059,7 +2059,8 @@ notify_subscription(SubId, IsRetry, Context) ->
                                     action = Action,
                                     status = Status,
                                     subscription = Sub,
-                                    customer = Cust
+                                    customer = Cust,
+                                    checkout_status = undefined
                                 }, Ctx),
                             Result;
                         {error, _} when IsRetry ->

@@ -10,5 +10,5 @@
     status :: binary(),
     customer :: m_paysub:customer(),
     subscription :: m_paysub:subscription(),
-    checkout_status :: m_paysub:checkout_status()
+    checkout_status :: m_paysub:checkout_status() | undefined
 }).

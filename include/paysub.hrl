@@ -9,5 +9,6 @@
     action :: new | update | delete,
     status :: binary(),
     customer :: m_paysub:customer(),
-    subscription :: m_paysub:subscription()
+    subscription :: m_paysub:subscription(),
+    checkout_status :: m_paysub:checkout_status()
 }).

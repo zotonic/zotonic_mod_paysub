@@ -47,6 +47,16 @@
 -export([
     m_get/3,
 
+    billing_address/2,
+    billing_email/2,
+    billing_name/2,
+    billing_phone/2,
+
+    sync_billing_to_rsc/3,
+    sync_billing_to_psp/2,
+    sync_billing_to_psp/3,
+    task_sync_billing_to_psp/3,
+
     is_subscriber/2,
     is_allowed_paysub/1,
 
@@ -92,6 +102,7 @@
     sync_payment/3,
     delete_payment/3,
 
+    provision_subscription/4,
     sync_subscription/4,
     delete_subscription/3,
 
@@ -120,12 +131,14 @@
 -include("../include/paysub.hrl").
 
 
--type customer() :: map().
--type subscription() :: map().
+-type customer() :: #{ binary() => term() }.
+-type subscription() :: #{ binary() => term() }.
+-type checkout_status() :: #{ binary() => term() }.
 
 -export_type([
     customer/0,
-    subscription/0
+    subscription/0,
+    checkout_status/0
 ]).
 
 m_get([ <<"is_subscriber">>, Id | Rest ], _Msg, Context) ->
@@ -315,6 +328,250 @@ m_get([ <<"product">>, Id | Rest ], _Msg, Context) ->
             end;
         false ->
             {error, eacces}
+    end.
+
+
+%% @doc Return a map with the billing address and email of the person. The values are
+%% unescaped for direct use in APIs.
+-spec billing_address(RscId, Context) -> {ok, Address} | {error, Reason} when
+    RscId :: m_rsc:resource(),
+    Context :: z:context(),
+    Address :: #{ binary() => binary() },
+    Reason :: term().
+billing_address(RscId, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        Id ->
+            Addr = case m_rsc:p_no_acl(Id, <<"billing_country">>, Context) of
+                undefined ->
+                    #{
+                        <<"street_1">> => m_rsc:p_no_acl(Id, <<"address_street_1">>, Context),
+                        <<"street_2">> => m_rsc:p_no_acl(Id, <<"address_street_2">>, Context),
+                        <<"city">> => m_rsc:p_no_acl(Id, <<"address_city">>, Context),
+                        <<"postcode">> => m_rsc:p_no_acl(Id, <<"address_postcode">>, Context),
+                        <<"state">> => m_rsc:p_no_acl(Id, <<"address_state">>, Context),
+                        <<"country">> => m_rsc:p_no_acl(Id, <<"address_country">>, Context)
+                    };
+                Country ->
+                    #{
+                        <<"street_1">> => m_rsc:p_no_acl(Id, <<"billing_street_1">>, Context),
+                        <<"street_2">> => m_rsc:p_no_acl(Id, <<"billing_street_2">>, Context),
+                        <<"city">> => m_rsc:p_no_acl(Id, <<"billing_city">>, Context),
+                        <<"postcode">> => m_rsc:p_no_acl(Id, <<"billing_postcode">>, Context),
+                        <<"state">> => m_rsc:p_no_acl(Id, <<"billing_state">>, Context),
+                        <<"country">> => Country
+                    }
+            end,
+            Addr1 = Addr#{
+                <<"email">> => billing_email(Id, Context),
+                <<"name">> => m_rsc:p_no_acl(Id, <<"billing_name">>, Context),
+                <<"phone">> => billing_phone(Id, Context)
+            },
+            Addr2 = maps:fold(
+                fun
+                    (K, undefined, Acc) -> Acc#{ K => <<>> };
+                    (K, V, Acc) -> Acc#{ K => z_html:unescape(V) }
+                end,
+                #{},
+                Addr1),
+            {ok, Addr2}
+    end.
+
+billing_email(Id, Context) ->
+    case m_rsc:p_no_acl(Id, <<"billing_email">>, Context) of
+        undefined ->
+            m_rsc:p_no_acl(Id, <<"email_raw">>, Context);
+        Email ->
+            z_html:unescape(Email)
+    end.
+
+billing_name(Id, Context) ->
+    case m_rsc:p_no_acl(Id, <<"billing_name">>, Context) of
+        undefined ->
+            {Name, _} = z_template:render_to_iolist("_name.tpl", [ {id, Id} ], z_acl:sudo(Context)),
+            z_string:trim(z_html:unescape(iolist_to_binary(Name)));
+        Name ->
+            z_html:unescape(Name)
+    end.
+
+billing_phone(Id, Context) ->
+    z_html:unescape(m_rsc:p_no_acl(Id, <<"phone">>, Context)).
+
+
+%% @doc Sync the billing address from the customer record to resource. Copy the customer address
+%% to the billing address if the normal address is set and different.
+-spec sync_billing_to_rsc(PSP, CustId, Context) -> {ok, RscId} | {error, Reason} when
+    PSP :: atom() | binary(),
+    CustId :: binary() | m_rsc:resource_id(),
+    Context :: z:context(),
+    RscId :: m_rsc:resource_id(),
+    Reason :: term().
+sync_billing_to_rsc(PSP, CustId, Context) ->
+    case get_customer(PSP, CustId, Context) of
+        {ok, #{ <<"rsc_id">> := undefined }} ->
+            {error, no_rsc_id};
+        {ok, #{
+            <<"rsc_id">> := Id,
+            <<"address_country">> := CustCountry,
+            <<"address_street_1">> := CustStreet1,
+            <<"address_street_2">> := CustStreet2,
+            <<"address_city">> := CustCity,
+            <<"address_state">> := CustState,
+            <<"address_postcode">> := CustPostcode,
+            <<"email">> := CustEmail,
+            <<"phone">> := CustPhone
+        }} when is_binary(CustCountry), CustCountry =/= <<>> ->
+            CustPhoneBin = z_convert:to_binary(CustPhone),
+            CustAddr = #{
+                <<"country">> => z_convert:to_binary(CustCountry),
+                <<"street_1">> => z_convert:to_binary(CustStreet1),
+                <<"street_2">> => z_convert:to_binary(CustStreet2),
+                <<"city">> => z_convert:to_binary(CustCity),
+                <<"state">> => z_convert:to_binary(CustState),
+                <<"postcode">> => z_convert:to_binary(CustPostcode),
+                <<"email">> => z_convert:to_binary(CustEmail),
+                <<"phone">> => CustPhoneBin
+            },
+            case billing_address(Id, Context) of
+                {ok, CustAddr} ->
+                    ok;
+                {ok, #{
+                    <<"phone">> := BillingPhone
+                }} ->
+                    Update = case m_rsc:p_no_acl(Id, <<"address_country">>, Context) of
+                        undefined ->
+                            #{
+                                <<"address_country">> => CustCountry,
+                                <<"address_street_1">> => CustStreet1,
+                                <<"address_street_2">> => CustStreet2,
+                                <<"address_city">> => CustCity,
+                                <<"address_state">> => CustState,
+                                <<"address_postcode">> => CustPostcode
+                            };
+                        _OtherCountry ->
+                            #{
+                                <<"billing_country">> => CustCountry,
+                                <<"billing_street_1">> => CustStreet1,
+                                <<"billing_street_2">> => CustStreet2,
+                                <<"billing_city">> => CustCity,
+                                <<"billing_state">> => CustState,
+                                <<"billing_postcode">> => CustPostcode
+                            }
+                    end,
+                    Update1 = case m_rsc:p_no_acl(Id, <<"email_raw">>, Context) of
+                        CustEmail ->
+                            Update;
+                        _ when CustEmail =/= <<>> ->
+                            Update#{
+                                <<"billing_email">> => CustEmail
+                            };
+                        _ ->
+                            Update
+                    end,
+                    Update2 = case BillingPhone of
+                        <<>> ->
+                            Update1#{
+                                <<"phone">> => CustPhone
+                            };
+                        _ ->
+                            Update1
+                    end,
+                    m_rsc:update(Id, Update2, [ no_touch ], z_acl:sudo(Context));
+                {error, _} = Error ->
+                    Error
+            end;
+        {ok, #{ <<"rsc_id">> := Id, <<"email">> := Email }} when is_binary(Email), Email =/= <<>> ->
+            case z_convert:to_binary(billing_email(Id, Context)) of
+                Email ->
+                    {ok, Id};
+                _OtherEmail ->
+                    Update = #{
+                        <<"billing_email">> => Email
+                    },
+                    m_rsc:update(Id, Update, [ no_touch ], z_acl:sudo(Context))
+            end;
+        {ok, #{ <<"rsc_id">> := Id }} ->
+            {ok, Id};
+        {error, _} = Error ->
+            Error
+    end.
+
+
+%% @doc Sync the billing address from the customer record to the psp. Copy the local billing address
+%% to psp if the information at the psp is different. The copying is dony by scheduling a task
+%% to run in the future. This also catches quick successive updates.
+-spec sync_billing_to_psp(RscId, Context) -> ok | {error, Reason} when
+    RscId :: m_rsc:resource(),
+    Context :: z:context(),
+    Reason :: term().
+sync_billing_to_psp(RscId, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        Id ->
+            sync_billing_to_psp(stripe, Id, Context)
+    end.
+
+%% @doc Sync the billing address from the customer record to the psp. Copy the local billing address
+%% to psp if the information at the psp is different. The copying is dony by scheduling a task
+%% to run in the future. This also catches quick successive updates.
+-spec sync_billing_to_psp(PSP, CustId, Context) -> ok | {error, Reason} when
+    PSP :: atom() | binary(),
+    CustId :: binary() | m_rsc:resource_id(),
+    Context :: z:context(),
+    Reason :: term().
+sync_billing_to_psp(PSP, CustId, Context) ->
+    case get_customer(PSP, CustId, Context) of
+        {ok, #{ <<"rsc_id">> := undefined }} ->
+            {error, no_rsc_id};
+        {ok, #{
+            <<"psp">> := PSPBin,
+            <<"psp_customer_id">> := PSPCustomerId,
+            <<"rsc_id">> := Id,
+            <<"address_country">> := CustCountry,
+            <<"address_street_1">> := CustStreet1,
+            <<"address_street_2">> := CustStreet2,
+            <<"address_city">> := CustCity,
+            <<"address_state">> := CustState,
+            <<"address_postcode">> := CustPostcode,
+            <<"email">> := CustEmail
+        }} when is_binary(CustCountry), CustCountry =/= <<>> ->
+            CustAddr = #{
+                <<"country">> => z_convert:to_binary(CustCountry),
+                <<"street_1">> => z_convert:to_binary(CustStreet1),
+                <<"street_2">> => z_convert:to_binary(CustStreet2),
+                <<"city">> => z_convert:to_binary(CustCity),
+                <<"state">> => z_convert:to_binary(CustState),
+                <<"postcode">> => z_convert:to_binary(CustPostcode),
+                <<"email">> => z_convert:to_binary(CustEmail)
+            },
+            case billing_address(Id, Context) of
+                {ok, CustAddr} ->
+                    {ok, Id};
+                {ok, _} ->
+                    IdBin = z_convert:to_binary(Id),
+                    TaskId = <<"paysub-to-psp-", PSPBin/binary, $-, IdBin/binary>>,
+                    Args = [ PSPBin, PSPCustomerId ],
+                    z_pivot_rsc:insert_task_after(1, ?MODULE, task_sync_billing_to_psp, TaskId, Args, Context),
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end;
+        {ok, _} ->
+            ok;
+        {error, _} = Error ->
+            Error
+    end.
+
+task_sync_billing_to_psp(<<"stripe">>, PSPCustomerId, Context) ->
+    case paysub_stripe:update_billing_address(PSPCustomerId, Context) of
+        ok ->
+            ok;
+        {error, retry} ->
+            {delay, 600};
+        {error, _} = Error ->
+            Error
     end.
 
 
@@ -1095,44 +1352,71 @@ user_payments(UserId0, Context) ->
     CheckoutNr :: binary(),
     Context :: z:context().
 checkout_status(CheckoutNr, Context) ->
-    Result = case z_db:q_row("
-        select status, payment_status, rsc_id
+    Result = case z_db:qmap_props_row("
+        select status, payment_status, rsc_id, props_json
         from paysub_checkout
         where nr = $1",
         [ CheckoutNr ], Context)
     of
-        { <<"open">>, _, RscId } ->
+        {ok, #{
+            <<"status">> := <<"open">>,
+            <<"rsc_id">> := RscId,
+            <<"args">> := Args
+        }} ->
             {ok, #{
                 <<"is_failed">> => false,
                 <<"is_paid">> => false,
-                <<"user_id">> => RscId
+                <<"user_id">> => RscId,
+                <<"args">> => Args
             }};
-        { <<"complete">>, <<"paid">>, RscId } ->
+        {ok, #{
+            <<"status">> := <<"complete">>,
+            <<"payment_status">> := <<"paid">>,
+            <<"rsc_id">> := RscId,
+            <<"args">> := Args
+        }} ->
             {ok, #{
                 <<"is_failed">> => false,
                 <<"is_paid">> => true,
-                <<"user_id">> => RscId
+                <<"user_id">> => RscId,
+                <<"args">> => Args
             }};
-        { <<"complete">>, <<"no_payment_required">>, RscId } ->
+        {ok, #{
+            <<"status">> := <<"complete">>,
+            <<"payment_status">> := <<"no_payment_required">>,
+            <<"rsc_id">> := RscId,
+            <<"args">> := Args
+        }} ->
             {ok, #{
                 <<"is_failed">> => false,
                 <<"is_paid">> => true,
-                <<"user_id">> => RscId
+                <<"user_id">> => RscId,
+                <<"args">> => Args
             }};
-        { <<"complete">>, _, RscId } ->
+        {ok, #{
+            <<"status">> := <<"complete">>,
+            <<"rsc_id">> := RscId,
+            <<"args">> := Args
+        }} ->
             {ok, #{
                 <<"is_failed">> => false,
                 <<"is_paid">> => false,
-                <<"user_id">> => RscId
+                <<"user_id">> => RscId,
+                <<"args">> => Args
             }};
-        { <<"expired">>, _, RscId } ->
+        {ok, #{
+            <<"status">> := <<"expired">>,
+            <<"rsc_id">> := RscId,
+            <<"args">> := Args
+        }} ->
             {ok, #{
                 <<"is_failed">> => true,
                 <<"is_paid">> => false,
-                <<"rsc_user_id">> => RscId
+                <<"rsc_user_id">> => RscId,
+                <<"args">> => Args
             }};
-        undefined ->
-            {error, enoent}
+        {error, _} = Error ->
+            Error
     end,
     maybe_add_user_info(Result, Context).
 
@@ -1519,14 +1803,25 @@ update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
         update paysub_checkout
         set rsc_id = $3
         where psp = $1
-          and psp_customer_id = $2",
+          and psp_customer_id = $2
+          and (rsc_id <> $3 or rsc_id is null)",
         [ PSP, PspCustId, RscId ],
         Context),
+    z_db:q("
+        update paysub_subscription
+        set rsc_id = $3
+        where psp = $1
+          and psp_customer_id = $2
+          and (rsc_id <> $3 or rsc_id is null)",
+        [ PSP, PspCustId, RscId ],
+        Context),
+    % Updating the customer might need update of metadata at the PSP
     case z_db:q("
         update paysub_customer
         set rsc_id = $3
         where psp = $1
-          and psp_customer_id = $2",
+          and psp_customer_id = $2
+          and (rsc_id <> $3 or rsc_id is null)",
         [ PSP, PspCustId, RscId ],
         Context)
     of
@@ -1542,7 +1837,17 @@ update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
             update_customer_psp(PSP, PspCustId, Context),
             ok;
         0 ->
-            {error, enoent}
+            case z_db:q("
+                select id
+                from paysub_customer
+                where psp = $1
+                  and psp_customer_id = $2",
+                [ PSP, PspCustId ],
+                Context)
+            of
+                undefined -> {error, enoent};
+                _Id -> ok
+            end
     end.
 
 %% @doc Update the customer records at the PSP.
@@ -1641,6 +1946,61 @@ delete_customer(PSP, Id, Context) ->
         0 -> {error, enoent}
     end.
 
+%% @doc Provision a new subscription. The subscription is already added to
+%% the database. Sends a notification that a new subscription has been
+%% created.
+-spec provision_subscription(PSP, PspSubId, CheckoutNr, Context) -> ok | {error, Reason} when
+    PSP :: binary() | atom(),
+    PspSubId :: binary(),
+    CheckoutNr :: binary(),
+    Context :: z:context(),
+    Reason :: term().
+provision_subscription(PSP, PspSubId, CheckoutNr, Context) ->
+    z_db:transaction(
+        fun(Ctx) ->
+            case z_db:qmap_row("
+                    select *
+                    from paysub_subscription
+                    where psp = $1
+                      and psp_subscription_id = $2
+                    for update
+                ", [ PSP, PspSubId ], Ctx)
+            of
+                {ok, #{
+                    <<"id">> := SubId,
+                    <<"psp_customer_id">> := PspCustId,
+                    <<"is_provisioned">> := false
+                } = Sub} ->
+                    {ok, Cust} = get_customer(PSP, PspCustId, Ctx),
+                    [Sub1] = subscription_add_prices([Sub], Context),
+                    Checkout = case checkout_status(CheckoutNr, Context) of
+                        {ok, CheckoutStatus} -> CheckoutStatus;
+                        {error, _} -> #{}
+                    end,
+                    z_notifier:first(
+                        #paysub_subscription{
+                            action = new,
+                            status = maps:get(<<"status">>, Sub1),
+                            subscription = Sub1,
+                            customer = Cust,
+                            checkout_status = Checkout
+                        }, Ctx),
+                    1 = z_db:q("
+                        update paysub_subscription
+                        set is_provisioned = true
+                        where id = $1",
+                        [ SubId ],
+                        Ctx),
+                    ok;
+                {ok, #{ <<"is_provisioned">> := true }} ->
+                    % Ignore
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end
+        end,
+        Context).
+
 -spec sync_subscription(PSP, Sub, PriceIds, Context) -> ok when
     PSP :: atom() | binary(),
     Sub :: map(),
@@ -1681,7 +2041,7 @@ notify_subscription(SubId, IsRetry, Context) ->
             of
                 {ok, #{
                     <<"psp">> := PSP,
-                    <<"is_provisioned">> := IsNotified,
+                    <<"is_provisioned">> := true,
                     <<"status">> := Status,
                     <<"psp_customer_id">> := PspCustId
                 } = Subrecord} ->
@@ -1690,7 +2050,6 @@ notify_subscription(SubId, IsRetry, Context) ->
                         <<"incomplete_expired">> -> delete;
                         <<"unpaid">> -> delete;
                         <<"canceled">> -> delete;
-                        _ when not IsNotified -> new;
                         _ -> update
                     end,
                     case get_customer(PSP, PspCustId, Ctx) of
@@ -1702,12 +2061,6 @@ notify_subscription(SubId, IsRetry, Context) ->
                                     subscription = Sub,
                                     customer = Cust
                                 }, Ctx),
-                            z_db:q("
-                                update paysub_subscription
-                                set is_provisioned = true
-                                where id = $1",
-                                [ SubId ],
-                                Ctx),
                             Result;
                         {error, _} when IsRetry ->
                             ?LOG_NOTICE(#{
@@ -1732,6 +2085,11 @@ notify_subscription(SubId, IsRetry, Context) ->
                             }),
                             {error, Reason}
                     end;
+                {ok, #{
+                    <<"is_provisioned">> := false
+                }} ->
+                    % The subscription is not yet provisioned -- ignore
+                    ok;
                 {error, Reason} = Error ->
                     ?LOG_ERROR(#{
                         in => zotonic_mod_paysub,

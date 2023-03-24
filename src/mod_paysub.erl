@@ -22,7 +22,7 @@
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication ]).
--mod_schema(3).
+-mod_schema(4).
 
 -author("Marc Worrell <marc@worrell.nl>").
 
@@ -33,6 +33,7 @@
     observe_search_query_term/2,
     observe_search_query/2,
     observe_rsc_merge/2,
+    observe_rsc_pivot_done/2,
     observe_admin_menu/3,
 
     init/1,
@@ -89,8 +90,11 @@ event(#submit{ message = {set_usernamepw, Args} }, Context) ->
             Password = z_context:get_q_validated(<<"password">>, Context),
             case m_identity:set_username_pw(UserId, Username, Password, z_acl:sudo(Context)) of
                 ok ->
-                    % Get logon-token and redirect to the user's page
-                    Url = m_rsc:p(UserId, page_url_abs, Context),
+                    % Get logon-token and redirect to the user's page or reload the current page
+                    Url = case z_convert:to_binary(proplists:get_value(url, Args)) of
+                        <<>> -> m_rsc:p(UserId, page_url_abs, Context);
+                        UrlArg -> UrlArg
+                    end,
                     case z_notifier:first(#auth_client_logon_user{ user_id = UserId, url = Url }, Context) of
                         ok ->
                             Context;
@@ -218,6 +222,9 @@ observe_search_query(#search_query{}, _Context) ->
 observe_rsc_merge(#rsc_merge{ winner_id = WinnerId, loser_id = LoserId }, Context) ->
     m_paysub:rsc_merge(WinnerId, LoserId, Context),
     ok.
+
+observe_rsc_pivot_done(#rsc_pivot_done{ id = Id }, Context) ->
+    m_paysub:sync_billing_to_psp(Id, Context).
 
 observe_admin_menu(#admin_menu{}, Acc, Context) ->
     [

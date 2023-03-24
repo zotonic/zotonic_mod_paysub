@@ -39,11 +39,13 @@
     event/2,
     checkout_session_create/2,
     checkout_session_sync/2,
+    checkout_session_completed/2,
 
     is_customer_portal/2,
     customer_portal_session_url/2,
     customer_portal_session_url/3,
 
+    update_billing_address/2,
     update_customer_task/2,
 
     sync_products/1,
@@ -377,6 +379,154 @@ checkout_session_sync(Session, Context) ->
     },
     m_paysub:checkout_update(stripe, CheckoutNr, Update, Context),
     ok.
+
+
+%% @doc Called on by controller_subscription_stripe_redirect on a successful checkout
+%% session. We can now ensure the creation of the customer and provision the subscription.
+-spec checkout_session_completed(Session, Context) -> ok | {error, Reason} when
+    Session :: map(),
+    Context :: z:context(),
+    Reason :: term().
+checkout_session_completed(#{ <<"mode">> := <<"subscription">> } = Session, Context) ->
+    checkout_session_sync(Session, Context),
+    #{
+        <<"customer">> := PSPCustomerId,
+        <<"client_reference_id">> := CheckoutNr,
+        <<"subscription">> := PSPSubscriptionId,
+        <<"payment_status">> := _PaymentStatus,
+        <<"metadata">> := Metadata
+        % "customer_details": {
+        %   "address": {
+        %     "city": "Amsterdam",
+        %     "country": "NL",
+        %     "line1": "Foobar 24",
+        %     "line2": null,
+        %     "postal_code": "1234 AS",
+        %     "state": null
+        %   },
+        %   "email": "test@example.com",
+        %   "name": "T Tester (admin)",
+        %   "phone": null,
+        %   "tax_exempt": "none",
+        %   "tax_ids": [
+        %   ]
+        % },
+        % "customer_email": "test@example.com",
+        % "metadata": {
+        %   "admin_url": "https://example.com/en/admin/edit/1",
+        %   "page_url": "https://example.com/en/page/1",
+        %   "rsc_id": "1"
+        % },
+    } = Session,
+    % 1. Ensure we have received the customer id in our db
+    Customer = case m_paysub:get_customer(stripe, PSPCustomerId, Context) of
+        {ok, Cust} ->
+            Cust;
+        {error, enoent} ->
+            ok = sync_customer(PSPCustomerId, Context),
+            {ok, Cust} = m_paysub:get_customer(stripe, PSPCustomerId, Context),
+            Cust
+    end,
+    % 2. Ensure we have received the subscription id in our db
+    case m_paysub:get_subscription(stripe, PSPSubscriptionId, Context) of
+        {ok, _} ->
+            ok;
+        {error, enoent} ->
+            ok = sync_subscription(PSPSubscriptionId, Context)
+    end,
+    % 3. Maybe sync the rsc id on the customer
+    case Customer of
+        #{ <<"rsc_id">> := undefined } ->
+            case Metadata of
+                #{ <<"rsc_id">> := RscId } when is_integer(RscId) ->
+                    ok = m_paysub:update_customer_rsc_id(stripe, PSPCustomerId, RscId, Context);
+                _ ->
+                    ok
+            end;
+        #{ <<"rsc_id">> := _ } ->
+            ok
+    end,
+    % 4. Provision the subscription by notifying paysub_subscription with status 'new'
+    m_paysub:provision_subscription(stripe, PSPSubscriptionId, CheckoutNr, Context).
+
+
+%% @doc Sync the resource billing address to the customer at Stripe.
+-spec update_billing_address(CustId, Context) -> ok | {error, Reason} when
+    CustId :: binary() | m_rsc:resource_id(),
+    Context :: z:context(),
+    Reason :: retry | term().
+update_billing_address(CustId, Context) ->
+    case m_paysub:get_customer(stripe, CustId, Context) of
+        {ok, #{
+            <<"rsc_id">> := Id,
+            <<"psp_customer_id">> := PSPCustomerId
+        }} when is_integer(Id) ->
+            case m_paysub:billing_address(Id, Context) of
+                {ok, #{
+                    <<"country">> := Country,
+                    <<"street_1">> := Street1,
+                    <<"street_2">> := Street2,
+                    <<"city">> := City,
+                    <<"state">> := State,
+                    <<"postcode">> := Postcode,
+                    <<"email">> := Email
+                }} ->
+                    ContextSudo = z_acl:sudo(Context),
+                    AdminUrl = z_dispatcher:url_for(admin_edit_rsc, [ {id, Id} ], Context),
+                    Address = #{
+                        <<"country">> => z_string:to_upper(Country),
+                        <<"city">> => City,
+                        <<"line1">> => Street1,
+                        <<"line2">> => Street2,
+                        <<"state">> => State,
+                        <<"postal_code">> => Postcode
+                    },
+                    Customer = #{
+                        <<"address">> => Address,
+                        <<"email">> => Email,
+                        <<"phone">> => m_paysub:billing_phone(Id, Context),
+                        <<"name">> => m_paysub:billing_name(Id, Context),
+                        <<"preferred_locales">> => [ bin(pref_language(Id, ContextSudo)) ],
+                        <<"metadata">> => #{
+                            <<"rsc_id">> => Id,
+                            <<"page_url">> => m_rsc:p_no_acl(Id, page_url_abs, ContextSudo),
+                            <<"admin_url">> => z_context:abs_url(AdminUrl, Context)
+                        }
+                    },
+                    case paysub_stripe_api:fetch(post, [ <<"customers">>, PSPCustomerId ], Customer, Context) of
+                        {ok, #{ <<"id">> := PSPCustId } = CustObject} ->
+                            sync_customer(CustObject, Context),
+                            ?LOG_INFO(#{
+                                in => zotonic_mod_paysub,
+                                text => <<"Stripe updated billing information for customer from resource">>,
+                                result => ok,
+                                rsc_id => Id,
+                                psp_customer_id => PSPCustId,
+                                psp => stripe
+                            }),
+                            ok;
+                        {error, Reason} ->
+                            ?LOG_ERROR(#{
+                                in => zotonic_mod_paysub,
+                                text => <<"Stripe error updating billing information for customer from resource">>,
+                                rsc_id => Id,
+                                result => error,
+                                reason => Reason,
+                                psp => stripe
+                            }),
+                            {error, reason_retry(Reason)}
+                    end;
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+reason_retry(timeout) -> retry;
+reason_retry(nxdomain) -> retry;
+reason_retry(Reason) -> Reason.
+
 
 %% @doc Update the rsc_id, metadata and billing address of customer in Stripe. This is called from
 %% a async task, and can return a {delay, ...} tuple if Stripe can't be reached.
@@ -722,17 +872,16 @@ ensure_stripe_customer(UserId, Context) ->
                     {ok, PSPCustId};
                 {error, enoent} ->
                     ContextSudo = z_acl:sudo(Context),
-                    {Name, _} = z_template:render_to_iolist(<<"_name.tpl">>, [ {id, RscId} ], ContextSudo),
                     AdminUrl = z_dispatcher:url_for(admin_edit_rsc, [ {id, RscId} ], Context),
                     Cust = #{
                         <<"address">> => billing_address(RscId, ContextSudo),
-                        <<"email">> => billing_email(RscId, ContextSudo),
-                        <<"phone">> => truncate(m_rsc:p_no_acl(RscId, <<"phone">>, ContextSudo), 19),
-                        <<"name">> => z_string:trim(Name),
+                        <<"email">> => z_html:unescape(bin(billing_email(RscId, ContextSudo))),
+                        <<"phone">> => truncate(m_paysub:billing_phone(RscId, ContextSudo), 19),
+                        <<"name">> => m_paysub:billing_name(RscId, ContextSudo),
                         <<"preferred_locales">> => [ bin(pref_language(RscId, ContextSudo)) ],
                         <<"metadata">> => #{
                             <<"rsc_id">> => RscId,
-                            <<"page_url">> => m_rsc:p_no_acl(RscId, page_url_abs, ContextSudo),
+                            <<"page_url">> => m_rsc:p_no_acl(RscId, <<"page_url_abs">>, ContextSudo),
                             <<"admin_url">> => z_context:abs_url(AdminUrl, Context)
                         }
                     },
@@ -768,32 +917,24 @@ truncate(B, Len) ->
     z_string:truncatechars(B, Len).
 
 billing_address(Id, Context) ->
-    BillingCountry = m_rsc:p(Id, <<"billing_country">>, Context),
-    case z_utils:is_empty(BillingCountry) of
-        true ->
+    case m_paysub:billing_address(Id, Context) of
+        {ok, Addr} ->
             #{
-                <<"city">> => bin(m_rsc:p(Id, <<"address_city">>, Context)),
-                <<"country">> => z_string:to_upper(bin(m_rsc:p(Id, <<"address_country">>, Context))),
-                <<"line1">> => bin(m_rsc:p(Id, <<"address_street_1">>, Context)),
-                <<"line2">> => bin(m_rsc:p(Id, <<"address_street_2">>, Context)),
-                <<"postal_code">> => bin(m_rsc:p(Id, <<"address_postcode">>, Context)),
-                <<"state">> => bin(m_rsc:p(Id, <<"address_state">>, Context))
+                <<"line1">> => maps:get(<<"street_1">>, Addr),
+                <<"line2">> => maps:get(<<"street_2">>, Addr),
+                <<"postal_code">> => maps:get(<<"postcode">>, Addr),
+                <<"city">> => maps:get(<<"city">>, Addr),
+                <<"state">> => maps:get(<<"state">>, Addr),
+                <<"country">> => z_string:to_upper(maps:get(<<"country">>, Addr))
             };
-        false ->
-            #{
-                <<"city">> => bin(m_rsc:p(Id, <<"billing_city">>, Context)),
-                <<"country">> => z_string:to_upper(bin(BillingCountry)),
-                <<"line1">> => bin(m_rsc:p(Id, <<"billing_street_1">>, Context)),
-                <<"line2">> => bin(m_rsc:p(Id, <<"billing_street_2">>, Context)),
-                <<"postal_code">> => bin(m_rsc:p(Id, <<"billing_postcode">>, Context)),
-                <<"state">> => bin(m_rsc:p(Id, <<"billing_state">>, Context))
-            }
+        {error, _} ->
+            #{}
     end.
 
 billing_email(Id, Context) ->
-    BillingEmail = m_rsc:p(Id, <<"billing_email">>, Context),
+    BillingEmail = m_rsc:p_no_acl(Id, <<"billing_email">>, Context),
     case z_utils:is_empty(BillingEmail) of
-        true -> m_rsc:p(Id, <<"email">>, Context);
+        true -> m_rsc:p_no_acl(Id, <<"email">>, Context);
         false -> BillingEmail
     end.
 

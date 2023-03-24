@@ -51,7 +51,10 @@ is_authorized(Context) ->
 
 process(<<"POST">>, _AcceptedCT, _ProvidedCT, Context) ->
     Parsed = #{ <<"type">> := EventType } = z_json:decode(z_context:get(body, Context)),
-    ?DEBUG(EventType),
+    ?LOG_DEBUG(#{
+        text => <<"Stripe webhook called">>,
+        event => Parsed
+    }),
     case handle(EventType, Parsed, Context) of
         ok ->
             {true, Context};
@@ -79,7 +82,15 @@ handle(<<"checkout.session.async_payment_succeeded">>, Payload, Context) ->
 handle(<<"checkout.session.completed">>, Payload, Context) ->
     % Payment is successful and the subscription is created.
     % You should provision the subscription and save the customer ID to your database.
-    sync_session(Payload, Context);
+    #{
+        <<"object">> := <<"event">>,
+        <<"data">> := #{
+            <<"object">> := #{
+                <<"object">> := <<"checkout.session">>
+            } = Session
+        }
+    } = Payload,
+    paysub_stripe:checkout_session_completed(Session, Context);
 handle(<<"checkout.session.expired">>, Payload, Context) ->
     sync_session(Payload, Context);
 
@@ -180,6 +191,7 @@ sync_session(Payload, _Context) ->
     }),
     {error, payload}.
 
+
 sync_customer(#{ <<"data">> := #{
         <<"object">> := #{
             <<"id">> := CustId,
@@ -228,12 +240,12 @@ sync_payment(#{ <<"data">> := #{
         }
     }}, Context) ->
     UniqueKey = <<"paysub-stripe-", PaymentId/binary>>,
-    z_pivot_rsc:insert_task_after(5, paysub_stripe, sync_task, UniqueKey, [ payment, PaymentId ], Context),
+    z_pivot_rsc:insert_task_after(60, paysub_stripe, sync_task, UniqueKey, [ payment, PaymentId ], Context),
     Args = [
         PaymentId,
         z_context:site(Context)
     ],
-    buffalo:queue({paysub_stripe, sync_payment, Args}, #{ timeout => 1000, deadline => 2000 }).
+    buffalo:queue({paysub_stripe, sync_payment, Args}, #{ timeout => 10000, deadline => 30000 }).
 
 sync_invoice(#{ <<"data">> := #{
         <<"object">> := #{
@@ -242,12 +254,12 @@ sync_invoice(#{ <<"data">> := #{
         }
     }}, Context) ->
     UniqueKey = <<"paysub-stripe-", InvId/binary>>,
-    z_pivot_rsc:insert_task_after(10, paysub_stripe, sync_task, UniqueKey, [ invoice, InvId ], Context),
+    z_pivot_rsc:insert_task_after(60, paysub_stripe, sync_task, UniqueKey, [ invoice, InvId ], Context),
     Args = [
         InvId,
         z_context:site(Context)
     ],
-    buffalo:queue({paysub_stripe, sync_invoice, Args}, #{ timeout => 1000, deadline => 2000 }).
+    buffalo:queue({paysub_stripe, sync_invoice, Args}, #{ timeout => 10000, deadline => 30000 }).
 
 
 is_valid_signature(Body, Context) ->

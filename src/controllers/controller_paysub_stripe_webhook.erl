@@ -52,6 +52,7 @@ is_authorized(Context) ->
 process(<<"POST">>, _AcceptedCT, _ProvidedCT, Context) ->
     Parsed = #{ <<"type">> := EventType } = z_json:decode(z_context:get(body, Context)),
     ?LOG_DEBUG(#{
+        in => zotonic_mod_paysub,
         text => <<"Stripe webhook called">>,
         event => Parsed
     }),

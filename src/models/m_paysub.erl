@@ -572,7 +572,14 @@ task_sync_billing_to_psp(<<"stripe">>, PSPCustomerId, Context) ->
             {delay, 600};
         {error, _} = Error ->
             Error
-    end.
+    end;
+task_sync_billing_to_psp(PSP, PSPCustomerId, _Context) ->
+    ?LOG_INFO(#{
+        in => zotonic_mod_paysub,
+        text => <<"Paysub: ignored sync to psp">>,
+        psp => PSP,
+        psp_customer_id => PSPCustomerId
+    }).
 
 
 %% @doc Check if the given user is a subscriber (of any valid subscription). If the

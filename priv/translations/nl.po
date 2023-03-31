@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2022-12-30 17:24+0100\n"
+"PO-Revision-Date: 2023-03-31 09:04+0200\n"
 "Last-Translator: Marc Worrell <marc@worrell.nl>\n"
 "Language-Team: \n"
 "Language: nl\n"
@@ -71,9 +71,9 @@ msgid ""
 "If this product is changed at the Payment Service Provider then the above "
 "fields could be overwritten with information from the PSP."
 msgstr ""
-"Indien dit product bij de aanbieder van betalingsdiensten wordt "
-"gewijzigd, kunnen de bovenstaande velden worden overschreven met "
-"informatie van de betalingsdienstaanbieder."
+"Indien dit product bij de aanbieder van betalingsdiensten wordt gewijzigd, "
+"kunnen de bovenstaande velden worden overschreven met informatie van de "
+"betalingsdienstaanbieder."
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:66
 msgid "Inactive"
@@ -294,7 +294,7 @@ msgstr "Uw betaling is in behandeling."
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:27
 #, fuzzy
 msgid "Your payment was not handled."
-msgstr "Uw betaling werd niet behandeld."
+msgstr "Uw betaling werd niet afgehandeld."
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:46
 msgid "ongoing"
@@ -307,4 +307,4 @@ msgstr "abonnementen"
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:160./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:79./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:170
 #, fuzzy
 msgid "view at {psp}"
-msgstr "kijk op {psp}"
+msgstr "bekijk bij PSP"

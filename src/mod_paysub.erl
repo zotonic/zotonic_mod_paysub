@@ -75,7 +75,7 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
         _ ->
             z_render:growl(?__("Sorry, can't redirect to the customer portal.", Context), Context)
     end;
-event(#submit{ message = {set_usernamepw, Args} }, Context) ->
+event(#submit{ message = {set_usernamepw, Args}, form = Form }, Context) ->
     {checkout_nr, CheckoutNr} = proplists:lookup(checkout_nr, Args),
     {user_id, UserId} = proplists:lookup(user_id, Args),
     case m_paysub:checkout_status(CheckoutNr, Context) of
@@ -92,15 +92,15 @@ event(#submit{ message = {set_usernamepw, Args} }, Context) ->
                 ok ->
                     % Get logon-token and redirect to the user's page or reload the current page
                     Url = case z_convert:to_binary(proplists:get_value(url, Args)) of
-                        <<>> -> m_rsc:p(UserId, page_url_abs, Context);
+                        <<>> -> m_rsc:p_no_acl(UserId, page_url_abs, Context);
                         UrlArg -> UrlArg
                     end,
                     case z_notifier:first(#auth_client_logon_user{ user_id = UserId, url = Url }, Context) of
                         ok ->
-                            Context;
+                            z_render:update(Form, ?__("Redirecting...", Context), Context);
                         {error, Reason} ->
                             ?LOG_ERROR(#{
-                                in => mod_paysub,
+                                in => zotonic_mod_paysub,
                                 text => <<"Paysub could not logon new user and redirect">>,
                                 result => error,
                                 reason => Reason,
@@ -108,10 +108,10 @@ event(#submit{ message = {set_usernamepw, Args} }, Context) ->
                                 user_id => UserId,
                                 url => Url
                             }),
-                            z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context);
+                            z_render:wire({alert, [{text, ?__("Sorry, something goes wrong, try again later.", Context)}]}, Context);
                         undefined ->
                             ?LOG_ERROR(#{
-                                in => mod_paysub,
+                                in => zotonic_mod_paysub,
                                 text => <<"Paysub could not logon new user and redirect: no handler">>,
                                 result => error,
                                 reason => auth_client_logon_user,
@@ -119,26 +119,26 @@ event(#submit{ message = {set_usernamepw, Args} }, Context) ->
                                 user_id => UserId,
                                 url => Url
                             }),
-                            z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context)
+                            z_render:wire({alert, [{text, ?__("Sorry, something goes wrong, try again later.", Context)}]}, Context)
                     end;
                 {error, eexist} ->
                     z_render:wire({show, [{target, "err-username"}]}, Context);
                 {error, _} ->
-                    z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context)
+                    z_render:wire({alert, [{text, ?__("Sorry, something goes wrong, try again later.", Context)}]}, Context)
             end;
         {ok, Status} ->
             ?LOG_ERROR(#{
-                in => mod_paysub,
+                in => zotonic_mod_paysub,
                 text => <<"Password reset for checkout without expired password">>,
                 result => error,
                 reason => Status,
                 checkout_nr => CheckoutNr,
                 user_id => UserId
             }),
-            z_render:wire({alert, [{text, ?__("Sorry, something goed wrong, try again later.", Context)}]}, Context);
+            z_render:wire({alert, [{text, ?__("Sorry, the password has already been reset.", Context)}]}, Context);
         {error, Reason} ->
             ?LOG_ERROR(#{
-                in => mod_paysub,
+                in => zotonic_mod_paysub,
                 text => <<"Password reset for checkout with error">>,
                 result => error,
                 reason => Reason,

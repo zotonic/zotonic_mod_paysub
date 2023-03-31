@@ -328,6 +328,21 @@ m_get([ <<"product">>, Id | Rest ], _Msg, Context) ->
             end;
         false ->
             {error, eacces}
+    end;
+m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
+    case get_price(PSP, PriceId, Context) of
+        {ok, Price} ->
+            Info = maps:with([
+                    <<"is_active">>,
+                    <<"name">>,
+                    <<"currency">>,
+                    <<"amount">>,
+                    <<"is_recurring">>,
+                    <<"recurring_period">>
+                ], Price),
+            {ok, {Info, Rest}};
+        {error, _} = Error ->
+            Error
     end.
 
 

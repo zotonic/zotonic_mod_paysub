@@ -225,6 +225,7 @@ checkout_session_create(Args, Context) ->
                 success_url => DoneUrl,
                 mode => Mode,
                 client_reference_id => CheckoutNr,
+                allow_promotion_codes => true,
                 metadata => #{
                     rsc_id => UserId,
                     page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),

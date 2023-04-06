@@ -141,6 +141,9 @@
     checkout_status/0
 ]).
 
+m_get([ <<"is_subscriber">> ], _Msg, Context) ->
+    IsSubscriber = is_subscriber(z_acl:user(Context), Context),
+    {ok, {IsSubscriber, []}};
 m_get([ <<"is_subscriber">>, Id | Rest ], _Msg, Context) ->
     IsSubscriber = is_subscriber(Id, Context),
     {ok, {IsSubscriber, Rest}};

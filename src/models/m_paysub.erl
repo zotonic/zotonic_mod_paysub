@@ -1543,9 +1543,10 @@ get_customer(PSP, UserId, Context) when is_integer(UserId) ->
                         on inv.psp = cust.psp
                         and inv.psp_customer_id = cust.psp_customer_id
                 where cust.rsc_id = $1
+                  and cust.psp = $2
                 group by cust_id
                 order by ct desc, dt desc
-                ", [ UserId ], Context),
+                ", [ UserId, PSP ], Context),
             C = hd(lists:filter(fun(#{ <<"psp_customer_id">> := CId }) -> CId =:= CsId end, Cs)),
             {ok, C};
         {error, _} = Error ->

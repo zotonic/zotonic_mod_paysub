@@ -55,6 +55,12 @@ Page to show when returned from PSP
                         <p>
                             {_ Your payment was not handled. _}
                         </p>
+
+                        {% if payment.args.cancel_url %}
+                            <p>
+                                <a class="btn btn-default" href="{{ payment.args.cancel_url|escape }}">{_ Back _}</a>
+                            </p>
+                        {% endif %}
                     {% endblock %}
                 {% else %}
                     {% if payment.is_paid %}
@@ -72,79 +78,95 @@ Page to show when returned from PSP
                             <p>{_ Your payment is pending. _}</p>
                         {% endblock %}
                     {% endif %}
-                    {% if     payment.user_id
-                          and payment.user_info.is_expired
-                          and not payment.user_info.visited
-                    %}
-                        <p>
-                            {_ Before you continue, please set your username and password. _}
-                            {_ You can always log on using your email address. _}
-                        </p>
+                    {% block payment_done %}
+                        {% if     payment.user_id
+                              and payment.user_info.is_expired
+                              and not payment.user_info.visited
+                        %}
+                            {# An account has been created, with the password set to expired
+                             # Show the form to set the username/password before continuing.
+                             #}
+                            <p>
+                                {_ Before you continue, please set your username and password. _}
+                                {_ You can always log on using your email address. _}
+                            </p>
 
-                        {% if payment.args.referring_id.payment_done_html %}
-                            {% wire id="signup-pw-reset"
-                                    type="submit"
-                                    action={hide target="err-username"}
-                                    postback={set_usernamepw
-                                            checkout_nr=q.checkout_nr
-                                            user_id=payment.user_id
-                                            url={paysub_psp_done_welcome id=payment.args.referring_id}|url}
-                                    delegate=`mod_paysub`
-                            %}
+                            {% if payment.args.success_url as url %}
+                                {% wire id="signup-pw-reset"
+                                        type="submit"
+                                        action={hide target="err-username"}
+                                        postback={set_usernamepw
+                                                checkout_nr=q.checkout_nr
+                                                user_id=payment.user_id
+                                                url=url}
+                                        delegate=`mod_paysub`
+                                %}
+                            {% elseif payment.args.referring_id.payment_done_html %}
+                                {# After setting password, continue to info page of referring_id #}
+                                {% wire id="signup-pw-reset"
+                                        type="submit"
+                                        action={hide target="err-username"}
+                                        postback={set_usernamepw
+                                                checkout_nr=q.checkout_nr
+                                                user_id=payment.user_id
+                                                url={paysub_psp_done_welcome id=payment.args.referring_id}|url}
+                                        delegate=`mod_paysub`
+                                %}
+                            {% else %}
+                                {# After setting password, continue to user page #}
+                                {% wire id="signup-pw-reset"
+                                        type="submit"
+                                        action={hide target="err-username"}
+                                        postback={set_usernamepw
+                                                checkout_nr=q.checkout_nr
+                                                user_id=payment.user_id}
+                                        delegate=`mod_paysub`
+                                %}
+                            {% endif %}
+                            <form id="signup-pw-reset" class="form" action="postback">
+                                <div class="form-group">
+                                    <label for="username" class="control-label">{_ Username _}</label>
+                                    <input type="text" id="username" name="username" class="form-control" required inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="username" value="{{ payment.user_info.username|escape }}">
+                                    {% validate id="username" type={presence} %}
+                                    <p class="alert alert-error" style="display: none" id="err-username">
+                                        {_ Sorry, this username is already in use. _}
+                                    </p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="password" class="control-label">{_ Password _}</label>
+                                    <input id="password" type="password" name="password" autocomplete="new-password" class="form-control" required autofocus
+                                    {% if m.authentication.password_min_length as min %}minlength="{{ min }}"{% endif %}
+                                    {% if m.authentication.password_regex as regex %}pattern="{{ regex|escape }}"{% endif %}>
+                                    {% if m.admin_identity.password_regex %}
+                                        {% validate id="password" type={format pattern=m.admin_identity.password_regex failure_message=_"This password does not meet the security requirements"} type={presence} %}
+                                    {% else %}
+                                        {% validate id="password" type={length minimum=m.authentication.password_min_length} type={presence} %}
+                                    {% endif %}
+                                </div>
+                                <div class="form-group">
+                                    <button class="btn btn-primary" type="submit">{_ Save and continue _}</button>
+                                </div>
+                            </form>
+                        {% elseif payment.args.success_url as url %}
+                            {# Redirect to the payment success page. #}
+                            {% wire action={redirect dispatch=`paysub_psp_done_welcome` location=url} %}
+                        {% elseif payment.args.referring_id.payment_done_html %}
+                            {# Redirect to the page with the information about the payment. #}
+                            {% wire action={redirect dispatch=`paysub_psp_done_welcome` id=payment.args.referring_id} %}
                         {% else %}
-                            {% wire id="signup-pw-reset"
-                                    type="submit"
-                                    action={hide target="err-username"}
-                                    postback={set_usernamepw
-                                            checkout_nr=q.checkout_nr
-                                            user_id=payment.user_id}
-                                    delegate=`mod_paysub`
-                            %}
+                            {# Show buttons to go to the profile page or back. #}
+                            {% if payment.user_id %}
+                                <a class="btn btn-primary" href="{{ payment.user_id.page_url }}">{_ Continue to your profile page _}</a>
+                            {% endif %}
+                            {% if payment.args.referring_id %}
+                                <a class="btn btn-primary" href="{{ referring_id.page_url }}">{_ Back _}</a>
+                            {% else %}
+                                <a class="btn btn-primary" href="{% url home %}">{_ Back to home _}</a>
+                            {% endif %}
                         {% endif %}
-                        <form id="signup-pw-reset" class="form" action="postback">
-                            <div class="form-group">
-                                <label for="username" class="control-label">{_ Username _}</label>
-                                <input type="text" id="username" name="username" class="form-control" required inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="username" value="{{ payment.user_info.username|escape }}">
-                                {% validate id="username" type={presence} %}
-                                <p class="alert alert-error" style="display: none" id="err-username">
-                                    {_ Sorry, this username is already in use. _}
-                                </p>
-                            </div>
-                            <div class="form-group">
-                                <label for="password" class="control-label">{_ Password _}</label>
-                                <input id="password" type="password" name="password" autocomplete="new-password" class="form-control" required autofocus
-                                {% if m.authentication.password_min_length as min %}minlength="{{ min }}"{% endif %}
-                                {% if m.authentication.password_regex as regex %}pattern="{{ regex|escape }}"{% endif %}>
-                                {% if m.admin_identity.password_regex %}
-                                    {% validate id="password" type={format pattern=m.admin_identity.password_regex failure_message=_"This password does not meet the security requirements"} type={presence} %}
-                                {% else %}
-                                    {% validate id="password" type={length minimum=m.authentication.password_min_length} type={presence} %}
-                                {% endif %}
-                            </div>
-                            <div class="form-group">
-                                <button class="btn btn-primary" type="submit">{_ Save and continue _}</button>
-                            </div>
-                        </form>
-                    {% elseif payment.args.referring_id.payment_done_html %}
-                        {% wire action={redirect dispatch=`paysub_psp_done_welcome` id=payment.args.referring_id} %}
-                    {% endif %}
+                    {% endblock %}
                 {% endif %}
-
             {% endif %}
-
-            {% block payment_below %}
-                {% if not payment.user_info.is_expired and payment.user_id %}
-                    {% if payment.user_id %}
-                        {% if payment.args.referring_id.payment_done_html %}
-                            <a class="btn btn-primary" href="{% url paysub_psp_done_welcome id=payment.args.referring_id %}">{_ Continue _}</a>
-                        {% else %}
-                            <a class="btn btn-primary" href="{{ payment.user_id.page_url }}">{_ Continue to your profile page _}</a>
-                        {% endif %}
-                    {% else %}
-                        <a class="btn btn-primary" href="{% url home %}">{_ Back to home _}</a>
-                    {% endif %}
-                {% endif %}
-            {% endblock %}
 
         {% endwith %}
     </div>

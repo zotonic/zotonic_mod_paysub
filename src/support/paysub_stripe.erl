@@ -193,21 +193,20 @@ customer_portal_session_url(UserId, ReturnUrl, Context) ->
     Reason :: term().
 checkout_session_create(Args, Context) ->
     UserId = z_acl:user(Context),
-    PriceName = proplists:get_value(price, Args),
-    case m_paysub:get_price(stripe, PriceName, Context) of
-        {ok, #{
-            <<"psp_price_id">> := PriceId,
-            <<"is_recurring">> := IsRecurring
-        }} ->
-            Mode = case proplists:get_value(mode, Args) of
-                undefined when IsRecurring -> subscription;
-                undefined when not IsRecurring -> payment;
+    case checkout_line_items(Args, Context) of
+        {ok, {IsRecurring, LineItems}} ->
+            Mode = case z_convert:to_binary(proplists:get_value(mode, Args)) of
+                <<>> when IsRecurring -> subscription;
+                <<>> when not IsRecurring -> payment;
                 <<"subscription">> -> subscription;
-                <<"payment">> -> payment;
-                subscription -> subscription;
-                payment -> payment
+                <<"payment">> -> payment
             end,
-            {ok, CheckoutNr} = m_paysub:checkout_create(stripe, UserId, Mode, Args, Context),
+            CheckoutProps = #{
+                survey_id => proplists:get_value(survey_id, Args),
+                survey_answer_id => proplists:get_value(survey_answer_id, Args),
+                args => Args
+            },
+            {ok, CheckoutNr} = m_paysub:checkout_create(stripe, UserId, Mode, CheckoutProps, Context),
             DoneUrl0 = z_dispatcher:url_for(paysub_psp_done, [ {checkout_nr, CheckoutNr} ], Context),
             DoneUrl = z_context:abs_url(DoneUrl0, Context),
             CancelUrl0 = case proplists:get_value(cancel_url, Args) of
@@ -220,42 +219,56 @@ checkout_session_create(Args, Context) ->
                 undefined -> undefined;
                 _ -> z_context:abs_url(z_dispatcher:url_for(admin_edit_rsc, [ {id, UserId} ], Context), Context)
             end,
+            CheckoutMetadata = proplists:get_value(metadata, Args, #{}),
+            CheckoutMetadata1 = CheckoutMetadata#{
+                rsc_id => UserId,
+                page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),
+                admin_url => AdminUrl,
+                survey_answer_id => proplists:get_value(survey_answer_id, Args)
+            },
             Payload = #{
                 cancel_url => CancelUrl,
                 success_url => DoneUrl,
                 mode => Mode,
                 client_reference_id => CheckoutNr,
                 allow_promotion_codes => true,
-                metadata => #{
-                    rsc_id => UserId,
-                    page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),
-                    admin_url => AdminUrl
+                metadata => CheckoutMetadata1,
+                payment_intent_data => #{
+                    description => proplists:get_value(description, Args, undefined),
+                    metadata => CheckoutMetadata1
                 },
-                line_items => [
-                    #{
-                        price => PriceId,
-                        quantity => 1
-                    }
-                ]
+                line_items => LineItems
             },
-            Payload1 = case m_paysub:get_customer(stripe, UserId, Context) of
+            Payload1 = case z_convert:to_binary(proplists:get_value(email, Args)) of
+                <<>> ->
+                    Payload;
+                Email ->
+                    Payload#{
+                        customer_email => Email
+                    }
+            end,
+            Payload2 = case m_paysub:get_customer(stripe, UserId, Context) of
                 {ok, #{
                     <<"psp_customer_id">> := CustId
                 }} when is_binary(CustId) ->
-                    Payload#{
+                    Payload1#{
                         customer => CustId,
                         customer_update => #{
                             address => auto
                         }
                     };
                 {error, enoent} when UserId =/= undefined ->
-                    PE1 = case m_rsc:p_no_acl(UserId, email_raw, Context) of
-                        undefined ->
-                            Payload;
-                        Email ->
-                            Payload#{
-                                customer_email => Email
-                            }
+                    PE1 = case Payload1 of
+                        #{ email := _ } -> Payload;
+                        _ ->
+                            case m_rsc:p_no_acl(UserId, email_raw, Context) of
+                                undefined ->
+                                    Payload1;
+                                UserEmail ->
+                                    Payload1#{
+                                        customer_email => UserEmail
+                                    }
+                            end
                     end,
                     PE2 = PE1#{
                         consent_collection => #{
@@ -284,26 +297,23 @@ checkout_session_create(Args, Context) ->
                             }
                     end;
                 {error, enoent} when UserId =:= undefined, Mode =:= payment ->
-                    Payload#{
-                        customer_creation => always,
+                    Payload1#{
+                        customer_creation => if_required,
                         billing_address_collection => auto,
                         consent_collection => #{
                             terms_of_service => required
                         }
                     };
                 {error, enoent} when UserId =:= undefined, Mode =:= subscription ->
-                    Payload#{
+                    Payload1#{
+                        customer_creation => always,
                         billing_address_collection => required,
                         consent_collection => #{
                             terms_of_service => required
-                        },
-                        subscription_data => #{
-                            metadata => #{
-                            }
                         }
                     }
             end,
-            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload1, Context) of
+            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload2, Context) of
                 {ok, #{
                     <<"url">> := Url,
                     <<"id">> := PspCheckoutId,
@@ -328,8 +338,8 @@ checkout_session_create(Args, Context) ->
                         result => error,
                         reason => Reason,
                         psp => stripe,
-                        price => PriceName,
-                        price_id => PriceId,
+                        args => Args,
+                        line_items => LineItems,
                         mode => Mode,
                         checkout_session => CheckoutNr
                     }),
@@ -342,9 +352,60 @@ checkout_session_create(Args, Context) ->
                 result => error,
                 reason => Reason,
                 psp => stripe,
-                price => PriceName
+                args => Args
             }),
             Error
+    end.
+
+checkout_line_items(Args, Context) ->
+    case proplists:get_value(price, Args) of
+        undefined ->
+            case proplists:get_value(line_items, Args, []) of
+                [] ->
+                    {error, noprice};
+                LineItems when is_list(LineItems) ->
+                    lists:foldr(
+                        fun
+                            (_Item, {error, _} = Error) ->
+                                Error;
+                            (#{ price := PriceName } = Item, {ok, {IsRecurringAcc, LineAcc}}) ->
+                                case m_paysub:get_price(stripe, PriceName, Context) of
+                                    {ok, #{
+                                        <<"psp_price_id">> := PriceId,
+                                        <<"is_recurring">> := IsRecurringPrice
+                                    }} ->
+                                        LineAcc1 = [
+                                            #{
+                                                price => PriceId,
+                                                quantity => maps:get(quantity, Item, 1)
+                                            }
+                                            | LineAcc
+                                        ],
+                                        IsRecurringAcc1 = IsRecurringAcc orelse IsRecurringPrice,
+                                        {ok, {IsRecurringAcc1, LineAcc1}};
+                                    {error, _} = Error ->
+                                        Error
+                                end
+                        end,
+                        {ok, {false, []}},
+                        LineItems)
+            end;
+        PriceName ->
+            case m_paysub:get_price(stripe, PriceName, Context) of
+                {ok, #{
+                    <<"psp_price_id">> := PriceId,
+                    <<"is_recurring">> := IsRecurring
+                }} ->
+                    LineItems = [
+                        #{
+                            price => PriceId,
+                            quantity => 1
+                        }
+                    ],
+                    {ok, {IsRecurring, LineItems}};
+                {error, _} = Error ->
+                    Error
+            end
     end.
 
 
@@ -448,7 +509,15 @@ checkout_session_completed(#{ <<"mode">> := <<"subscription">> } = Session, Cont
             ok
     end,
     % 4. Provision the subscription by notifying paysub_subscription with status 'new'
-    m_paysub:provision_subscription(stripe, PSPSubscriptionId, CheckoutNr, Context).
+    m_paysub:provision_subscription(stripe, PSPSubscriptionId, CheckoutNr, Context);
+checkout_session_completed(#{ <<"mode">> := <<"payment">> } = Session, Context) ->
+    % 1. Save the new Session
+    checkout_session_sync(Session, Context),
+    % 2. If payment complete then send notification
+    #{
+        <<"client_reference_id">> := CheckoutNr
+    } = Session,
+    m_paysub:checkout_completed(stripe, CheckoutNr, Context).
 
 
 %% @doc Sync the resource billing address to the customer at Stripe.

@@ -259,7 +259,10 @@ checkout_session_create(Args, Context) ->
                     };
                 {error, enoent} when UserId =/= undefined ->
                     PE1 = case Payload1 of
-                        #{ email := _ } -> Payload;
+                        #{
+                            customer_email := _
+                        } ->
+                            Payload;
                         _ ->
                             case m_rsc:p_no_acl(UserId, email_raw, Context) of
                                 undefined ->

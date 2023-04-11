@@ -78,6 +78,7 @@
     checkout_status/2,
     checkout_create/5,
     checkout_update/4,
+    checkout_completed/3,
 
     get_customer/3,
 
@@ -1378,7 +1379,7 @@ user_payments(UserId0, Context) ->
     Context :: z:context().
 checkout_status(CheckoutNr, Context) ->
     Result = case z_db:qmap_props_row("
-        select status, payment_status, rsc_id, props_json
+        select status, payment_status, rsc_id, survey_id, survey_answer_id, props_json
         from paysub_checkout
         where nr = $1",
         [ CheckoutNr ], Context)
@@ -1386,58 +1387,83 @@ checkout_status(CheckoutNr, Context) ->
         {ok, #{
             <<"status">> := <<"open">>,
             <<"rsc_id">> := RscId,
+            <<"survey_id">> := SurveyId,
+            <<"survey_answer_id">> := SurveyResultId,
             <<"args">> := Args
         }} ->
             {ok, #{
+                <<"status">> => <<"open">>,
                 <<"is_failed">> => false,
                 <<"is_paid">> => false,
                 <<"user_id">> => RscId,
+                <<"survey_id">> => SurveyId,
+                <<"survey_answer_id">> => SurveyResultId,
                 <<"args">> => Args
             }};
         {ok, #{
             <<"status">> := <<"complete">>,
             <<"payment_status">> := <<"paid">>,
+            <<"survey_id">> := SurveyId,
+            <<"survey_answer_id">> := SurveyResultId,
             <<"rsc_id">> := RscId,
             <<"args">> := Args
         }} ->
             {ok, #{
+                <<"status">> => <<"complete">>,
                 <<"is_failed">> => false,
                 <<"is_paid">> => true,
                 <<"user_id">> => RscId,
+                <<"survey_id">> => SurveyId,
+                <<"survey_answer_id">> => SurveyResultId,
                 <<"args">> => Args
             }};
         {ok, #{
             <<"status">> := <<"complete">>,
             <<"payment_status">> := <<"no_payment_required">>,
+            <<"survey_id">> := SurveyId,
+            <<"survey_answer_id">> := SurveyResultId,
             <<"rsc_id">> := RscId,
             <<"args">> := Args
         }} ->
             {ok, #{
+                <<"status">> => <<"complete">>,
                 <<"is_failed">> => false,
                 <<"is_paid">> => true,
                 <<"user_id">> => RscId,
+                <<"survey_id">> => SurveyId,
+                <<"survey_answer_id">> => SurveyResultId,
                 <<"args">> => Args
             }};
         {ok, #{
             <<"status">> := <<"complete">>,
             <<"rsc_id">> := RscId,
+            <<"survey_id">> := SurveyId,
+            <<"survey_answer_id">> := SurveyResultId,
             <<"args">> := Args
         }} ->
             {ok, #{
+                <<"status">> => <<"complete">>,
                 <<"is_failed">> => false,
                 <<"is_paid">> => false,
                 <<"user_id">> => RscId,
+                <<"survey_id">> => SurveyId,
+                <<"survey_answer_id">> => SurveyResultId,
                 <<"args">> => Args
             }};
         {ok, #{
             <<"status">> := <<"expired">>,
             <<"rsc_id">> := RscId,
+            <<"survey_id">> := SurveyId,
+            <<"survey_answer_id">> := SurveyResultId,
             <<"args">> := Args
         }} ->
             {ok, #{
+                <<"status">> => <<"expired">>,
                 <<"is_failed">> => true,
                 <<"is_paid">> => false,
-                <<"rsc_user_id">> => RscId,
+                <<"user_id">> => RscId,
+                <<"survey_id">> => SurveyId,
+                <<"survey_answer_id">> => SurveyResultId,
                 <<"args">> => Args
             }};
         {error, _} = Error ->
@@ -1451,26 +1477,25 @@ maybe_add_user_info({ok, #{ <<"is_failed">> := false, <<"is_paid">> := true, <<"
 maybe_add_user_info(R, _Context) ->
     R.
 
--spec checkout_create(PSP, UserId, Mode, Args, Context) -> Result when
+-spec checkout_create(PSP, UserId, Mode, Props, Context) -> Result when
     PSP :: atom() | binary(),
     UserId :: undefined | m_rsc:resource_id(),
     Mode :: payment | subscription,
-    Args :: proplists:proplist(),
+    Props :: #{ atom() => term() },
     Context :: z:context(),
     Result :: {ok, CheckoutNr} | {error, term()},
     CheckoutNr :: binary().
-checkout_create(PSP, UserId, Mode, Args, Context) ->
+checkout_create(PSP, UserId, Mode, Props, Context) ->
     Nr = z_ids:id(32),
     case z_db:insert(
         paysub_checkout,
-        #{
+        Props#{
             rsc_id => UserId,
             psp => PSP,
             mode => Mode,
             nr => Nr,
             status => <<"open">>,           % open, complete, or expired.
-            payment_status => <<"unpaid">>, % unpaid, paid, no_payment_required
-            args => Args
+            payment_status => <<"unpaid">>  % unpaid, paid, no_payment_required
         },
         Context)
     of
@@ -1480,13 +1505,13 @@ checkout_create(PSP, UserId, Mode, Args, Context) ->
             Error
     end.
 
--spec checkout_update(PSP, CheckoutNr, Update, Context) -> Result when
+-spec checkout_update(PSP, CheckoutNr, UpdateProps, Context) -> Result when
     PSP :: atom() | binary(),
     CheckoutNr :: binary(),
-    Update :: map(),
+    UpdateProps :: #{ atom() => term() },
     Context :: z:context(),
     Result :: ok | {error, enoent}.
-checkout_update(PSP, CheckoutNr, Update, Context) ->
+checkout_update(PSP, CheckoutNr, UpdateProps, Context) ->
     case z_db:q1("
         select id
         from paysub_checkout
@@ -1498,13 +1523,42 @@ checkout_update(PSP, CheckoutNr, Update, Context) ->
         undefined ->
             {error, enoent};
         CheckoutId ->
-            % TODO:
-            % - Notification with new status
             z_db:update(
                 paysub_checkout,
                 CheckoutId,
-                Update#{ modified => calendar:universal_time() },
+                UpdateProps#{ modified => calendar:universal_time() },
                 Context)
+    end.
+
+
+-spec checkout_completed(PSP, CheckoutNr, Context) -> Result when
+    PSP :: atom() | binary(),
+    CheckoutNr :: binary(),
+    Context :: z:context(),
+    Result :: ok | {error, term()}.
+checkout_completed(PSP, CheckoutNr, Context) ->
+    case checkout_status(CheckoutNr, Context) of
+        {ok, #{ <<"status">> := Status } = CheckoutStatus} ->
+            PSPCustomerId = z_db:q1("
+                select psp_customer_id
+                from paysub_checkout
+                where psp = $1
+                  and nr = $2",
+                [ PSP, CheckoutNr ],
+                Context),
+            Customer = case get_customer(PSP, PSPCustomerId, Context) of
+                {error, _} -> undefined;
+                {ok, Cust} -> Cust
+            end,
+            z_notifier:notify_sync(#paysub_checkout_done{
+                    status = Status,
+                    checkout_status = CheckoutStatus,
+                    customer = Customer
+                },
+                Context),
+            ok;
+        {error, _} = Error ->
+            Error
     end.
 
 
@@ -2414,6 +2468,30 @@ install(Context) ->
                     ok;
                 true ->
                     ok
+            end,
+            case z_db:column_exists(paysub_checkout, survey_answer_id, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_checkout
+                            add column survey_answer_id bigint
+                        ", Context),
+                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_checkout_psp_psp_customer_id_key ON paysub_checkout (psp, psp_customer_id)", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
+            end,
+            case z_db:column_exists(paysub_checkout, survey_id, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_checkout
+                            add column survey_id integer
+                        ", Context),
+                    [] = z_db:q("CREATE INDEX paysub_checkout_survey_id_key ON paysub_checkout (survey_id, survey_answer_id)", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
             end
     end.
 
@@ -2422,6 +2500,8 @@ install_tables(Context) ->
         create table paysub_checkout (
             id serial not null,
             rsc_id integer,
+            survey_id integer,
+            survey_answer_id bigint,
             nr character varying(32) not null,
             psp character varying(32) not null,
             psp_checkout_id character varying(128),
@@ -2446,6 +2526,8 @@ install_tables(Context) ->
     [] = z_db:q("CREATE INDEX fki_paysub_checkout_rsc_id ON paysub_checkout (rsc_id)", Context),
     [] = z_db:q("CREATE INDEX paysub_checkout_created_key ON paysub_checkout (created)", Context),
     [] = z_db:q("CREATE INDEX paysub_checkout_modified_key ON paysub_checkout (modified)", Context),
+    [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_customer_id_key ON paysub_checkout (psp, psp_customer_id)", Context),
+    [] = z_db:q("CREATE INDEX paysub_checkout_survey_id_key ON paysub_checkout (survey_id, survey_answer_id)", Context),
 
     [] = z_db:q("
         create table paysub_product (

@@ -333,6 +333,14 @@ m_get([ <<"product">>, Id | Rest ], _Msg, Context) ->
         false ->
             {error, eacces}
     end;
+m_get([ <<"prices">>, PSP | Rest ], _Msg, Context) ->
+    case is_allowed_paysub(Context) orelse z_acl:is_allowed(use, mod_admin, Context) of
+        true ->
+            {ok, Prices} = list_prices(PSP, Context),
+            {ok, {Prices, Rest}};
+        false ->
+            {error, eacces}
+    end;
 m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
     case get_price(PSP, PriceId, Context) of
         {ok, Price} ->
@@ -1633,9 +1641,19 @@ list_products(PSP, Context) ->
     Context :: z:context().
 list_prices(PSP, Context) ->
     z_db:qmap_props("
-        select *
-        from paysub_price
-        where psp = $1",
+        select price.*,
+               prod.name as product_name,
+               prod.is_active as is_product_active
+        from paysub_price price
+            left join paysub_product prod
+            on prod.psp = price.psp
+            and prod.psp_product_id = price.psp_product_id
+        where price.psp = $1
+        order by
+            price.is_active and prod.is_active desc,
+            product_name,
+            price.name,
+            price.psp_price_id",
         [ PSP ], Context).
 
 

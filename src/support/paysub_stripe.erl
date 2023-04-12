@@ -251,12 +251,13 @@ checkout_session_create(Args, Context) ->
                 {ok, #{
                     <<"psp_customer_id">> := CustId
                 }} when is_binary(CustId) ->
-                    Payload1#{
+                    % Only customer or customer_email can be used.
+                    maps:remove(customer_email, Payload1#{
                         customer => CustId,
                         customer_update => #{
                             address => auto
                         }
-                    };
+                    });
                 {error, enoent} when UserId =/= undefined ->
                     PE1 = case Payload1 of
                         #{

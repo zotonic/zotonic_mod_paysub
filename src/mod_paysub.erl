@@ -22,7 +22,7 @@
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication ]).
--mod_schema(5).
+-mod_schema(6).
 
 -author("Marc Worrell <marc@worrell.nl>").
 
@@ -35,6 +35,9 @@
     observe_rsc_merge/2,
     observe_rsc_pivot_done/2,
     observe_admin_menu/3,
+
+    observe_survey_result_columns/3,
+    observe_survey_result_column_values/3,
 
     init/1,
     manage_schema/2
@@ -254,6 +257,47 @@ observe_admin_menu(#admin_menu{}, Acc, Context) ->
             visiblecheck = {acl, use, mod_paysub}}
         | Acc
     ].
+
+
+observe_survey_result_columns(#survey_result_columns{ id = Id }, Cols, Context) ->
+    case m_paysub:is_survey_checkout(Id, Context) of
+        true ->
+            Cols ++ [ {<<"paysub_status">>, ?__("Payment status", Context)} ];
+        false ->
+            Cols
+    end.
+
+observe_survey_result_column_values(#survey_result_column_values{
+        id = SurveyId,
+        answer = Answer,
+        format = Format,
+        columns = Cols
+    }, Vs, Context) ->
+    case proplists:is_defined(<<"paysub_status">>, Cols) of
+        true ->
+            AnswerId = proplists:get_value(id, Answer),
+            Checkout = case m_paysub:survey_checkout_status(SurveyId, AnswerId, Context) of
+                {ok, C} ->
+                    C;
+                {error, _} ->
+                    undefined
+            end,
+            % Add payment status for this view
+            Vars = [
+                {survey_id, SurveyId},
+                {answer, Answer},
+                {checkout, Checkout},
+                {format, Format}
+            ],
+            {Html, _} = z_template:render_to_iolist(<<"_survey_paysub_checkout_status.tpl">>, Vars, Context),
+            Html1 = z_string:trim(iolist_to_binary(Html)),
+            Html2 = binary:replace(Html1, [ <<10>>, <<9>>, <<13>> ], <<" ">>, [ global ]),
+            Vs#{
+                <<"paysub_status">> => Html2
+            };
+        false ->
+            Vs
+    end.
 
 
 

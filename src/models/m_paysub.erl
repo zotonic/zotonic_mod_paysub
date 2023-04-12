@@ -79,6 +79,8 @@
     checkout_create/5,
     checkout_update/4,
     checkout_completed/3,
+    is_survey_checkout/2,
+    survey_checkout_status/3,
 
     get_customer/3,
 
@@ -1569,6 +1571,38 @@ checkout_completed(PSP, CheckoutNr, Context) ->
             Error
     end.
 
+-spec is_survey_checkout(SurveyId, Context) -> boolean() when
+    SurveyId :: m_rsc:resource_id(),
+    Context :: z:context().
+is_survey_checkout(SurveyId, Context) ->
+    case z_db:q1("
+        select id
+        from paysub_checkout
+        where survey_id = $1
+        limit 1",
+        [ SurveyId ],
+        Context)
+    of
+        undefined -> false;
+        _ -> true
+    end.
+
+-spec survey_checkout_status(SurveyId, AnswerId, Context) -> {ok, Checkout} | {error, Reason} when
+    SurveyId :: m_rsc:resource_id(),
+    AnswerId :: integer(),
+    Context :: z:context(),
+    Checkout :: map(),
+    Reason :: term().
+survey_checkout_status(SurveyId, AnswerId, Context) ->
+    z_db:qmap_props_row("
+        select *
+        from paysub_checkout
+        where survey_id = $1
+          and survey_answer_id = $2
+        ",
+        [ SurveyId, AnswerId ],
+        Context).
+
 
 -spec get_customer(PSP, UserIdOrCustId, Context) -> Result when
     PSP :: atom() | binary(),
@@ -2510,6 +2544,18 @@ install(Context) ->
                     ok;
                 true ->
                     ok
+            end,
+            case z_db:column_exists(paysub_checkout, psp_payment_id, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_checkout
+                            add column psp_payment_id character varying(128)
+                        ", Context),
+                    [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_payment_id_key ON paysub_checkout (psp, psp_payment_id)", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
             end
     end.
 
@@ -2523,6 +2569,7 @@ install_tables(Context) ->
             nr character varying(32) not null,
             psp character varying(32) not null,
             psp_checkout_id character varying(128),
+            psp_payment_id character varying(128),
             psp_customer_id character varying(128),
             mode character varying(32) not null,
             status character varying(32) not null default 'open'::character varying,
@@ -2545,6 +2592,7 @@ install_tables(Context) ->
     [] = z_db:q("CREATE INDEX paysub_checkout_created_key ON paysub_checkout (created)", Context),
     [] = z_db:q("CREATE INDEX paysub_checkout_modified_key ON paysub_checkout (modified)", Context),
     [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_customer_id_key ON paysub_checkout (psp, psp_customer_id)", Context),
+    [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_payment_id_key ON paysub_checkout (psp, psp_payment_id)", Context),
     [] = z_db:q("CREATE INDEX paysub_checkout_survey_id_key ON paysub_checkout (survey_id, survey_answer_id)", Context),
 
     [] = z_db:q("

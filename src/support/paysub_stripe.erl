@@ -306,6 +306,9 @@ checkout_session_create(Args, Context) ->
                         billing_address_collection => auto,
                         consent_collection => #{
                             terms_of_service => required
+                        },
+                        invoice_creation => #{
+                            enabled => true
                         }
                     };
                 {error, enoent} when UserId =:= undefined, Mode =:= subscription ->
@@ -431,6 +434,7 @@ checkout_session_sync(Session, Context) ->
         <<"id">> := _CheckoutId,
         <<"customer">> := CustomerId,
         <<"status">> := Status,
+        <<"payment_intent">> := PaymentId,
         <<"payment_status">> := PaymentStatus,
         <<"client_reference_id">> := CheckoutNr,
         <<"currency">> := Currency,
@@ -438,6 +442,7 @@ checkout_session_sync(Session, Context) ->
     } = Session,
     Update = #{
         psp_customer_id => CustomerId,
+        psp_payment_id => PaymentId,
         status => Status,
         payment_status => PaymentStatus,
         currency => z_string:to_upper(Currency),

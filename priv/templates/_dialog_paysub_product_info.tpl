@@ -66,6 +66,11 @@
                         <p class="help-block">
                             {_ Subscribers to this product are added to this user group. _}
                         </p>
+
+                        <label class="checkbox">
+                            <input type="checkbox" name="is_use_maincontact" {% if p.is_use_maincontact %}checked{% endif %}>
+                            {_ Institute is subscriber, user will be the main contact _}
+                        </label>
                     </td>
                 </tr>
                 <tr>

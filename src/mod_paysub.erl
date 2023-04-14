@@ -22,7 +22,7 @@
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication ]).
--mod_schema(6).
+-mod_schema(8).
 
 -author("Marc Worrell <marc@worrell.nl>").
 
@@ -54,9 +54,11 @@ event(#submit{ message = {product_update, Args} }, Context) ->
             {id, ProdId} = proplists:lookup(id, Args),
             UGId = z_context:get_q(<<"user_group_id">>, Context),
             IsActive = z_context:get_q(<<"is_active">>, Context),
+            IsUseMainContact = z_context:get_q(<<"is_use_maincontact">>, Context),
             Update = #{
                 is_active => z_convert:to_bool(IsActive),
                 user_group_id => m_rsc:rid(UGId, Context),
+                is_use_maincontact => z_convert:to_bool(IsUseMainContact),
                 modified => calendar:universal_time()
             },
             m_paysub:update_product(ProdId, Update, Context),

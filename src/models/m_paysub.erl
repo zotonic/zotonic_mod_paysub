@@ -109,7 +109,7 @@
     sync_subscription/4,
     delete_subscription/3,
 
-    update_customer_rsc_id/4,
+    update_customer_rsc_id/5,
     update_customer_psp/3,
     update_customer_psp_task/3,
 
@@ -124,7 +124,6 @@
     rsc_merge/3,
 
     install/1,
-    drop_tables/1,
 
     notify_subscription/3
 ]).
@@ -352,7 +351,9 @@ m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
                     <<"currency">>,
                     <<"amount">>,
                     <<"is_recurring">>,
-                    <<"recurring_period">>
+                    <<"recurring_period">>,
+                    <<"is_use_maincontact">>,
+                    <<"product_name">>
                 ], Price),
             {ok, {Info, Rest}};
         {error, _} = Error ->
@@ -1383,103 +1384,80 @@ user_payments(UserId0, Context) ->
                 Context)
     end.
 
-
 -spec checkout_status(CheckoutNr, Context) -> {ok, map()} | {error, term()} when
     CheckoutNr :: binary(),
     Context :: z:context().
 checkout_status(CheckoutNr, Context) ->
     Result = case z_db:qmap_props_row("
-        select status, payment_status, rsc_id, survey_id, survey_answer_id, props_json
+        select status,
+               payment_status,
+               rsc_id,
+               requestor_id,
+               survey_id,
+               survey_answer_id,
+               props_json
         from paysub_checkout
         where nr = $1",
         [ CheckoutNr ], Context)
     of
         {ok, #{
-            <<"status">> := <<"open">>,
-            <<"rsc_id">> := RscId,
-            <<"survey_id">> := SurveyId,
-            <<"survey_answer_id">> := SurveyResultId,
-            <<"args">> := Args
-        }} ->
-            {ok, #{
-                <<"status">> => <<"open">>,
-                <<"is_failed">> => false,
-                <<"is_paid">> => false,
-                <<"user_id">> => RscId,
+                <<"rsc_id">> := RscId,
+                <<"requestor_id">> := RequestorId,
+                <<"survey_id">> := SurveyId,
+                <<"survey_answer_id">> := SurveyResultId,
+                <<"is_use_maincontact">> := IsUseMainContact,
+                <<"args">> := Args
+            } = CheckoutStatus} ->
+            S = status(CheckoutStatus),
+            UserId = case RequestorId of
+                undefined -> RscId;
+                _ -> RequestorId
+            end,
+            S1 = S#{
+                <<"rsc_id">> => RscId,
+                <<"requestor_id">> => RequestorId,
+                <<"user_id">> => UserId,
                 <<"survey_id">> => SurveyId,
                 <<"survey_answer_id">> => SurveyResultId,
+                <<"is_use_maincontact">> => IsUseMainContact,
                 <<"args">> => Args
-            }};
-        {ok, #{
-            <<"status">> := <<"complete">>,
-            <<"payment_status">> := <<"paid">>,
-            <<"survey_id">> := SurveyId,
-            <<"survey_answer_id">> := SurveyResultId,
-            <<"rsc_id">> := RscId,
-            <<"args">> := Args
-        }} ->
-            {ok, #{
-                <<"status">> => <<"complete">>,
-                <<"is_failed">> => false,
-                <<"is_paid">> => true,
-                <<"user_id">> => RscId,
-                <<"survey_id">> => SurveyId,
-                <<"survey_answer_id">> => SurveyResultId,
-                <<"args">> => Args
-            }};
-        {ok, #{
-            <<"status">> := <<"complete">>,
-            <<"payment_status">> := <<"no_payment_required">>,
-            <<"survey_id">> := SurveyId,
-            <<"survey_answer_id">> := SurveyResultId,
-            <<"rsc_id">> := RscId,
-            <<"args">> := Args
-        }} ->
-            {ok, #{
-                <<"status">> => <<"complete">>,
-                <<"is_failed">> => false,
-                <<"is_paid">> => true,
-                <<"user_id">> => RscId,
-                <<"survey_id">> => SurveyId,
-                <<"survey_answer_id">> => SurveyResultId,
-                <<"args">> => Args
-            }};
-        {ok, #{
-            <<"status">> := <<"complete">>,
-            <<"rsc_id">> := RscId,
-            <<"survey_id">> := SurveyId,
-            <<"survey_answer_id">> := SurveyResultId,
-            <<"args">> := Args
-        }} ->
-            {ok, #{
-                <<"status">> => <<"complete">>,
-                <<"is_failed">> => false,
-                <<"is_paid">> => false,
-                <<"user_id">> => RscId,
-                <<"survey_id">> => SurveyId,
-                <<"survey_answer_id">> => SurveyResultId,
-                <<"args">> => Args
-            }};
-        {ok, #{
-            <<"status">> := <<"expired">>,
-            <<"rsc_id">> := RscId,
-            <<"survey_id">> := SurveyId,
-            <<"survey_answer_id">> := SurveyResultId,
-            <<"args">> := Args
-        }} ->
-            {ok, #{
-                <<"status">> => <<"expired">>,
-                <<"is_failed">> => true,
-                <<"is_paid">> => false,
-                <<"user_id">> => RscId,
-                <<"survey_id">> => SurveyId,
-                <<"survey_answer_id">> => SurveyResultId,
-                <<"args">> => Args
-            }};
+            },
+            {ok, S1};
         {error, _} = Error ->
             Error
     end,
     maybe_add_user_info(Result, Context).
+
+status(#{ <<"status">> := <<"open">> }) ->
+    #{
+        <<"status">> => <<"open">>,
+        <<"is_failed">> => false,
+        <<"is_paid">> => false
+    };
+status(#{ <<"status">> := <<"complete">>, <<"payment_status">> := <<"paid">> }) ->
+    #{
+        <<"status">> => <<"complete">>,
+        <<"is_failed">> => false,
+        <<"is_paid">> => true
+    };
+status(#{ <<"status">> := <<"complete">>, <<"payment_status">> := <<"no_payment_required">> }) ->
+    #{
+        <<"status">> => <<"complete">>,
+        <<"is_failed">> => false,
+        <<"is_paid">> => true
+    };
+status(#{ <<"status">> := <<"complete">> }) ->
+    #{
+        <<"status">> => <<"complete">>,
+        <<"is_failed">> => false,
+        <<"is_paid">> => false
+    };
+status(#{ <<"status">> := <<"expired">> }) ->
+    #{
+        <<"status">> => <<"expired">>,
+        <<"is_failed">> => true,
+        <<"is_paid">> => false
+    }.
 
 maybe_add_user_info({ok, #{ <<"is_failed">> := false, <<"is_paid">> := true, <<"user_id">> := UserId } = R}, Context) ->
     UserInfo = m_identity:get_user_info(UserId, Context),
@@ -1835,10 +1813,15 @@ get_price(_PSP, undefined, _Context) ->
     {error, enoent};
 get_price(PSP, PriceIdOrName, Context) when is_binary(PriceIdOrName) ->
     z_db:qmap_props_row("
-        select *
-        from paysub_price
-        where (psp_price_id = $1 or name = $1)
-          and psp = $2
+        select price.*,
+               prod.is_use_maincontact,
+               prod.name as product_name
+        from paysub_price price
+            left join paysub_product prod
+            on prod.psp = price.psp
+            and prod.psp_product_id = price.psp_product_id
+        where (price.psp_price_id = $1 or price.name = $1)
+          and price.psp = $2
         ", [ PriceIdOrName, PSP ], Context).
 
 
@@ -1925,19 +1908,24 @@ delete_payment(PSP, PaymentId, Context) ->
 
 %% @doc Set the resource id of a customer record, its subscriptions and checkouts.
 %% The rsc_id will be propagated to the PSP with an async task.
--spec update_customer_rsc_id(PSP, PspCustId, RscId, Context) -> ok | {error, enoent} when
+-spec update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) -> ok | {error, enoent} when
     PSP :: atom() | binary(),
     PspCustId :: binary(),
     RscId :: undefined | m_rsc:resource_id(),
+    RequestorId :: undefined | m_rsc:resource_id(),
     Context :: z:context().
-update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
+update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) ->
     z_db:q("
         update paysub_checkout
-        set rsc_id = $3
+        set rsc_id = $3,
+            requestor_id = $4
         where psp = $1
           and psp_customer_id = $2
-          and (rsc_id <> $3 or rsc_id is null)",
-        [ PSP, PspCustId, RscId ],
+          and ( rsc_id <> $3
+              or rsc_id is null
+              or requestor_id <> $4
+              or requestor_id is null)",
+        [ PSP, PspCustId, RscId, RequestorId ],
         Context),
     z_db:q("
         update paysub_subscription
@@ -2556,6 +2544,28 @@ install(Context) ->
                     ok;
                 true ->
                     ok
+            end,
+            case z_db:column_exists(paysub_product, is_use_maincontact, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_product
+                            add column is_use_maincontact boolean not null default false
+                        ", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
+            end,
+            case z_db:column_exists(paysub_checkout, requestor_id, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_checkout
+                            add column requestor_id integer
+                        ", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
             end
     end.
 
@@ -2564,6 +2574,7 @@ install_tables(Context) ->
         create table paysub_checkout (
             id serial not null,
             rsc_id integer,
+            requestor_id integer,
             survey_id integer,
             survey_answer_id bigint,
             nr character varying(32) not null,
@@ -2600,6 +2611,7 @@ install_tables(Context) ->
             id serial not null,
             is_active boolean not null default true,
             user_group_id int,
+            is_use_maincontact boolean not null default false,
             name character varying(128) not null,
             psp character varying(32) not null,
             psp_product_id character varying(128) not null,
@@ -2791,37 +2803,4 @@ install_tables(Context) ->
     [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_modified_key ON paysub_payment (modified)", Context),
     [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_created_key ON paysub_payment (created)", Context),
 
-    % [] = z_db:q("
-    %     create table paysub_log (
-    %         id bigserial not null,
-    %         rsc_id integer,
-    %         event character varying(128) not null,
-    %         psp character varying(32) not null,
-    %         psp_customer_id character varying(128),
-    %         psp_subscription_id character varying(128),
-    %         props_json jsonb,
-    %         created timestamp with time zone NOT NULL DEFAULT now(),
-
-    %         constraint paysub_log_pkey primary key (id)
-    %     )", Context),
-
-    % [] = z_db:q("CREATE INDEX paysub_log_created_key ON paysub_log (created)", Context),
-    % [] = z_db:q("CREATE INDEX paysub_log_rsc_id_key ON paysub_log (rsc_id)", Context),
-    % [] = z_db:q("CREATE INDEX paysub_log_psp_psp_customer_id_key ON paysub_log (psp, psp_customer_id)", Context),
-    % [] = z_db:q("CREATE INDEX paysub_log_psp_psp_subscription_id_key ON paysub_log (psp, psp_subscription_id)", Context),
     ok.
-
-drop_tables(Context) ->
-    z_db:q("drop table if exists paysub_log", Context),
-    z_db:q("drop table if exists paysub_invoice_item", Context),
-    z_db:q("drop table if exists paysub_invoice", Context),
-    z_db:q("drop table if exists paysub_customer", Context),
-    z_db:q("drop table if exists paysub_subscription_item", Context),
-    z_db:q("drop table if exists paysub_subscription", Context),
-    z_db:q("drop table if exists paysub_price", Context),
-    z_db:q("drop table if exists paysub_product", Context),
-    z_db:q("drop table if exists paysub_checkout", Context),
-    z_db:q("drop table if exists paysub_payment", Context),
-    ok.
-
-

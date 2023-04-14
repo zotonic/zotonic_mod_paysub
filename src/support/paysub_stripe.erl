@@ -194,7 +194,14 @@ customer_portal_session_url(UserId, ReturnUrl, Context) ->
 checkout_session_create(Args, Context) ->
     UserId = z_acl:user(Context),
     case checkout_line_items(Args, Context) of
-        {ok, {IsRecurring, LineItems}} ->
+        {ok, {IsRecurring, IsUseMainContact, LineItems}} ->
+            % For normal subscriptions the subscriber is the user.
+            % For organisations with a 'has-maincontact' relation to the user
+            % the subscriber is the (as yet undefined) organisation.
+            SubscriberId = case IsUseMainContact of
+                true -> undefined;
+                false -> UserId
+            end,
             Mode = case z_convert:to_binary(proplists:get_value(mode, Args)) of
                 <<>> when IsRecurring -> subscription;
                 <<>> when not IsRecurring -> payment;
@@ -204,9 +211,11 @@ checkout_session_create(Args, Context) ->
             CheckoutProps = #{
                 survey_id => proplists:get_value(survey_id, Args),
                 survey_answer_id => proplists:get_value(survey_answer_id, Args),
+                requestor_id => UserId,
+                is_use_maincontact => IsUseMainContact,
                 args => Args
             },
-            {ok, CheckoutNr} = m_paysub:checkout_create(stripe, UserId, Mode, CheckoutProps, Context),
+            {ok, CheckoutNr} = m_paysub:checkout_create(stripe, SubscriberId, Mode, CheckoutProps, Context),
             DoneUrl0 = z_dispatcher:url_for(paysub_psp_done, [ {checkout_nr, CheckoutNr} ], Context),
             DoneUrl = z_context:abs_url(DoneUrl0, Context),
             CancelUrl0 = case proplists:get_value(cancel_url, Args) of
@@ -215,14 +224,15 @@ checkout_session_create(Args, Context) ->
                 CUrl -> CUrl
             end,
             CancelUrl = z_context:abs_url(CancelUrl0, Context),
-            AdminUrl = case UserId of
+            AdminUrl = case SubscriberId of
                 undefined -> undefined;
-                _ -> z_context:abs_url(z_dispatcher:url_for(admin_edit_rsc, [ {id, UserId} ], Context), Context)
+                _ -> z_context:abs_url(z_dispatcher:url_for(admin_edit_rsc, [ {id, SubscriberId} ], Context), Context)
             end,
             CheckoutMetadata = proplists:get_value(metadata, Args, #{}),
             CheckoutMetadata1 = CheckoutMetadata#{
-                rsc_id => UserId,
-                page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),
+                requestor_id => UserId,
+                rsc_id => SubscriberId,
+                page_url => m_rsc:p_no_acl(SubscriberId, page_url_abs, Context),
                 admin_url => AdminUrl,
                 survey_answer_id => proplists:get_value(survey_answer_id, Args)
             },
@@ -233,10 +243,6 @@ checkout_session_create(Args, Context) ->
                 client_reference_id => CheckoutNr,
                 allow_promotion_codes => true,
                 metadata => CheckoutMetadata1,
-                payment_intent_data => #{
-                    description => proplists:get_value(description, Args, undefined),
-                    metadata => CheckoutMetadata1
-                },
                 line_items => LineItems
             },
             Payload1 = case z_convert:to_binary(proplists:get_value(email, Args)) of
@@ -247,7 +253,7 @@ checkout_session_create(Args, Context) ->
                         customer_email => Email
                     }
             end,
-            Payload2 = case m_paysub:get_customer(stripe, UserId, Context) of
+            Payload2 = case m_paysub:get_customer(stripe, SubscriberId, Context) of
                 {ok, #{
                     <<"psp_customer_id">> := CustId
                 }} when is_binary(CustId) ->
@@ -258,14 +264,14 @@ checkout_session_create(Args, Context) ->
                             address => auto
                         }
                     });
-                {error, enoent} when UserId =/= undefined ->
+                {error, enoent} when SubscriberId =/= undefined ->
                     PE1 = case Payload1 of
                         #{
                             customer_email := _
                         } ->
                             Payload;
                         _ ->
-                            case m_rsc:p_no_acl(UserId, email_raw, Context) of
+                            case m_rsc:p_no_acl(SubscriberId, email_raw, Context) of
                                 undefined ->
                                     Payload1;
                                 UserEmail ->
@@ -285,8 +291,8 @@ checkout_session_create(Args, Context) ->
                                 billing_address_collection => required,
                                 subscription_data => #{
                                     metadata => #{
-                                        rsc_id => UserId,
-                                        page_url => m_rsc:p_no_acl(UserId, page_url_abs, Context),
+                                        rsc_id => SubscriberId,
+                                        page_url => m_rsc:p_no_acl(SubscriberId, page_url_abs, Context),
                                         admin_url => AdminUrl
                                     }
                                 }
@@ -295,12 +301,16 @@ checkout_session_create(Args, Context) ->
                             PE2#{
                                 customer_creation => always,
                                 billing_address_collection => auto,
+                                payment_intent_data => #{
+                                    description => proplists:get_value(description, Args, undefined),
+                                    metadata => CheckoutMetadata1
+                                },
                                 invoice_creation => #{
                                     enabled => true
                                 }
                             }
                     end;
-                {error, enoent} when UserId =:= undefined, Mode =:= payment ->
+                {error, enoent} when SubscriberId =:= undefined, Mode =:= payment ->
                     Payload1#{
                         customer_creation => if_required,
                         billing_address_collection => auto,
@@ -309,11 +319,14 @@ checkout_session_create(Args, Context) ->
                         },
                         invoice_creation => #{
                             enabled => true
+                        },
+                        payment_intent_data => #{
+                            description => proplists:get_value(description, Args, undefined),
+                            metadata => CheckoutMetadata1
                         }
                     };
-                {error, enoent} when UserId =:= undefined, Mode =:= subscription ->
+                {error, enoent} when SubscriberId =:= undefined, Mode =:= subscription ->
                     Payload1#{
-                        customer_creation => always,
                         billing_address_collection => required,
                         consent_collection => #{
                             terms_of_service => required
@@ -348,7 +361,9 @@ checkout_session_create(Args, Context) ->
                         args => Args,
                         line_items => LineItems,
                         mode => Mode,
-                        checkout_session => CheckoutNr
+                        checkout_session => CheckoutNr,
+                        user_id => UserId,
+                        subscriber_id => SubscriberId
                     }),
                     Error
             end;
@@ -375,11 +390,12 @@ checkout_line_items(Args, Context) ->
                         fun
                             (_Item, {error, _} = Error) ->
                                 Error;
-                            (#{ price := PriceName } = Item, {ok, {IsRecurringAcc, LineAcc}}) ->
+                            (#{ price := PriceName } = Item, {ok, {IsRecurringAcc, IsUseMainContactAcc, LineAcc}}) ->
                                 case m_paysub:get_price(stripe, PriceName, Context) of
                                     {ok, #{
                                         <<"psp_price_id">> := PriceId,
-                                        <<"is_recurring">> := IsRecurringPrice
+                                        <<"is_recurring">> := IsRecurringPrice,
+                                        <<"is_use_maincontact">> := IsUseMainContact
                                     }} ->
                                         LineAcc1 = [
                                             #{
@@ -389,19 +405,21 @@ checkout_line_items(Args, Context) ->
                                             | LineAcc
                                         ],
                                         IsRecurringAcc1 = IsRecurringAcc orelse IsRecurringPrice,
-                                        {ok, {IsRecurringAcc1, LineAcc1}};
+                                        IsUseMainContactAcc1 = IsUseMainContactAcc orelse IsUseMainContact,
+                                        {ok, {IsRecurringAcc1, IsUseMainContactAcc1, LineAcc1}};
                                     {error, _} = Error ->
                                         Error
                                 end
                         end,
-                        {ok, {false, []}},
+                        {ok, {false, false, []}},
                         LineItems)
             end;
         PriceName ->
             case m_paysub:get_price(stripe, PriceName, Context) of
                 {ok, #{
                     <<"psp_price_id">> := PriceId,
-                    <<"is_recurring">> := IsRecurring
+                    <<"is_recurring">> := IsRecurring,
+                    <<"is_use_maincontact">> := IsUseMainContact
                 }} ->
                     LineItems = [
                         #{
@@ -409,7 +427,7 @@ checkout_line_items(Args, Context) ->
                             quantity => 1
                         }
                     ],
-                    {ok, {IsRecurring, LineItems}};
+                    {ok, {IsRecurring, IsUseMainContact, LineItems}};
                 {error, _} = Error ->
                     Error
             end

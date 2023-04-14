@@ -24,13 +24,13 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:70./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:86
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:71./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:87
 msgid ""
 "Address"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:30./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:46
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:30./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:29./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:46./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:46
 msgid ""
 "Amount"
 msgstr ""
@@ -48,31 +48,73 @@ msgid ""
 msgstr ""
 ""
 
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:35
+msgid ""
+"Amount received"
+msgstr ""
+""
+
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:37
 msgid ""
 "Amount remaining"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:176./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:94./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:103./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:186
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:33./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:47./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:61./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:162
+msgid ""
+"Back"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:164
+msgid ""
+"Back to home"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:90
+msgid ""
+"Before you continue, please set your username and password."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:177./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:89./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:96./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:94./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:103./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:187
 msgid ""
 "Close"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:40
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:29
+msgid ""
+"Continue reading our site."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:159./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done_welcome.tpl:10
+msgid ""
+"Continue to your profile page"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:23
+msgid ""
+"Created"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:40./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:40
 msgid ""
 "Date"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:49
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:49./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:52
 msgid ""
 "Description"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:63./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:79./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:55./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:61
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:64./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:64./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:80./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:55./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:58./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:61
 msgid ""
 "Email"
 msgstr ""
@@ -81,6 +123,12 @@ msgstr ""
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:49
 msgid ""
 "End date"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:19./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:41
+msgid ""
+"Expired"
 msgstr ""
 ""
 
@@ -109,15 +157,21 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:125./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:141./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:55
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:126./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:142./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:55
 msgid ""
 "Items"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:101./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:117
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:102./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:118
 msgid ""
 "Main contact"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_paysub_customer_link.tpl:4
+msgid ""
+"Manage subscriptions and payments"
 msgstr ""
 ""
 
@@ -127,7 +181,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:48./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:20./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:64./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:52./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:43./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:58
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:48./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:43./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:20./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:64./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:52./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:55./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:43./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:58
 msgid ""
 "Name"
 msgstr ""
@@ -136,6 +190,18 @@ msgstr ""
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:146
 msgid ""
 "No invoices found."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:14./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:36
+msgid ""
+"No payment required"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:117
+msgid ""
+"No payments found."
 msgstr ""
 ""
 
@@ -163,21 +229,69 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:167./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:137./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:195
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:16./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:38
+msgid ""
+"Not yet received"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:167./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:138./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:137./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:195
 msgid ""
 "Only administrators are allowed to see payments"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:153./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:72./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:163./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:58./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:40./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:64
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:9./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:31
+msgid ""
+"Open"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:154./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:71./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:72./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:164./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:58./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:61./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:40./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:64
 msgid ""
 "PSP"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:12./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:34
+msgid ""
+"Paid"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:136
+msgid ""
+"Password"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:128
+msgid ""
+"Payment"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:265
+msgid ""
+"Payment status"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:3
+msgid ""
+"Payments"
 msgstr ""
 ""
 
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:8
 msgid ""
 "Payments &amp; Subscriptions &ndash; Invoices"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:8
+msgid ""
+"Payments &amp; Subscriptions &ndash; Payments"
 msgstr ""
 ""
 
@@ -199,31 +313,37 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:122
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:237
 msgid ""
 "Payments - Invoices"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:134
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:255
+msgid ""
+"Payments - Payments"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:249
 msgid ""
 "Payments - Products"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:128
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:243
 msgid ""
 "Payments - Subscriptions"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:146./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:55
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:147./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:55
 msgid ""
 "Period"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:92./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:108
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:93./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:109
 msgid ""
 "Phone"
 msgstr ""
@@ -247,15 +367,27 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:136
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:137
 msgid ""
 "Prorated"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:45./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:153./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:89./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:124
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:49
+msgid ""
+"Received"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:45./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:154./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:89./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:124
 msgid ""
 "Recurring"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:103
+msgid ""
+"Redirecting..."
 msgstr ""
 ""
 
@@ -265,21 +397,75 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:10./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:10
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:147
+msgid ""
+"Save and continue"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:10./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:10./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:10
 msgid ""
 "Show all"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:52./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:68
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:52./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:47./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:68
 msgid ""
 "Show all invoices"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:53./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:23./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:69
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:54./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:49./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:70
+msgid ""
+"Show all payments"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:53./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:48./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:23./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:69
 msgid ""
 "Show all subscriptions"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:40./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:53
+msgid ""
+"Something went wrong"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:76./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:79
+msgid ""
+"Sorry, can't redirect to the customer portal."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:114./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:125./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:130
+msgid ""
+"Sorry, something goes wrong, try again later."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/support/paysub_stripe.erl:86./_build/default/lib/zotonic_mod_paysub/src/support/paysub_stripe.erl:102
+msgid ""
+"Sorry, something went wrong, please try again later."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:141
+msgid ""
+"Sorry, the password has already been reset."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:151
+msgid ""
+"Sorry, this checkout could not be fetched."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:132
+msgid ""
+"Sorry, this username is already in use."
 msgstr ""
 ""
 
@@ -295,9 +481,15 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:5./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:5./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:43./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:52
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:5./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:5./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:5./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:43./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:43./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:52
 msgid ""
 "Status"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_paysub_checkout_link.tpl:6
+msgid ""
+"Subscribe"
 msgstr ""
 ""
 
@@ -319,21 +511,33 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:21
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:69./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:76
 msgid ""
-"Thank you for your payment!"
+"Thank you!"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:171
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:141
+msgid ""
+"This password does not meet the security requirements"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:172
 msgid ""
 "Unknown invoice, or no permission to view this invoice."
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:17
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:43
 msgid ""
 "Unknown payment"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:93
+msgid ""
+"Unknown payment, or no permission to view this payment."
 msgstr ""
 ""
 
@@ -343,7 +547,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:181
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:182
 msgid ""
 "Unknown subscription, or no permission to view this subscription."
 msgstr ""
@@ -352,6 +556,12 @@ msgstr ""
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:55./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:49
 msgid ""
 "User group"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:128
+msgid ""
+"Username"
 msgstr ""
 ""
 
@@ -367,25 +577,49 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:41./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:44./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:70./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:109./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:83./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:86
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done_welcome.tpl:3
+msgid ""
+"Welcome"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:25./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:41./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:44./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:70./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:75./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:109./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:83./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:86
 msgid ""
 "Y-m-d"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:61
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:66
 msgid ""
 "You are not allowed to edit products."
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:33
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:91
+msgid ""
+"You can always log on using your email address."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:78
 msgid ""
 "Your payment is pending."
 msgstr ""
 ""
 
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:27
+msgid ""
+"Your payment was canceled."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:71
+msgid ""
+"Your payment was handled succesfully."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:56
 msgid ""
 "Your payment was not handled."
 msgstr ""
@@ -403,7 +637,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:160./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:79./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:170
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:161./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:78./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:79./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:171./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:26
 msgid ""
 "view at {psp}"
 msgstr ""

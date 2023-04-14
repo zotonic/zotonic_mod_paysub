@@ -109,6 +109,7 @@
     sync_subscription/4,
     delete_subscription/3,
 
+    update_customer_rsc_id/4,
     update_customer_rsc_id/5,
     update_customer_psp/3,
     update_customer_psp_task/3,
@@ -1908,6 +1909,25 @@ delete_payment(PSP, PaymentId, Context) ->
 
 %% @doc Set the resource id of a customer record, its subscriptions and checkouts.
 %% The rsc_id will be propagated to the PSP with an async task.
+-spec update_customer_rsc_id(PSP, PspCustId, RscId, Context) -> ok | {error, enoent} when
+    PSP :: atom() | binary(),
+    PspCustId :: binary(),
+    RscId :: undefined | m_rsc:resource_id(),
+    Context :: z:context().
+update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
+    z_db:q("
+        update paysub_checkout
+        set rsc_id = $3
+        where psp = $1
+          and psp_customer_id = $2
+          and ( rsc_id <> $3
+              or rsc_id is null)",
+        [ PSP, PspCustId, RscId ],
+        Context),
+    update_customer_rsc_id_1(PSP, PspCustId, RscId, Context).
+
+%% @doc Set the resource id of a customer record, its subscriptions and checkouts.
+%% The rsc_id will be propagated to the PSP with an async task.
 -spec update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) -> ok | {error, enoent} when
     PSP :: atom() | binary(),
     PspCustId :: binary(),
@@ -1927,6 +1947,16 @@ update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) ->
               or requestor_id is null)",
         [ PSP, PspCustId, RscId, RequestorId ],
         Context),
+    update_customer_rsc_id_1(PSP, PspCustId, RscId, Context).
+
+%% @doc Set the resource id of a customer record, its subscriptions and checkouts.
+%% The rsc_id will be propagated to the PSP with an async task.
+-spec update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) -> ok | {error, enoent} when
+    PSP :: atom() | binary(),
+    PspCustId :: binary(),
+    RscId :: undefined | m_rsc:resource_id(),
+    Context :: z:context().
+update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
     z_db:q("
         update paysub_subscription
         set rsc_id = $3

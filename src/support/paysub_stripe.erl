@@ -86,7 +86,10 @@ event(#postback{ message = {checkout, Args} }, Context) ->
             z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
     end;
 event(#postback{ message = {customer_portal, Args} }, Context) ->
-    UserId = z_acl:user(Context),
+    UserId = case proplists:get_value(id, Args) of
+        undefined -> z_acl:user(Context);
+        RscId -> RscId
+    end,
     ReturnUrl = case proplists:get_value(return_url, Args) of
         RUrl when is_binary(RUrl) ->
             RUrl;
@@ -112,12 +115,17 @@ is_customer_portal(UserId, Context) ->
         undefined ->
             false;
         RscId ->
-            case m_paysub:get_customer(stripe, RscId, Context) of
-                {ok, #{
-                    <<"psp_customer_id">> := _
-                }} ->
-                    true;
-                {error, _} ->
+            case is_allowed_portal_session(RscId, Context) of
+                true ->
+                    case m_paysub:get_customer(stripe, RscId, Context) of
+                        {ok, #{
+                            <<"psp_customer_id">> := _
+                        }} ->
+                            true;
+                        {error, _} ->
+                            false
+                    end;
+                false ->
                     false
             end
     end.
@@ -138,51 +146,59 @@ customer_portal_session_url(UserId, Context) ->
     ReturnUrl :: binary() | undefined,
     Context :: z:context(),
     Url :: binary(),
-    Reason :: enoent | term().
+    Reason :: enoent | eacces | term().
 customer_portal_session_url(UserId, ReturnUrl, Context) ->
     case m_rsc:rid(UserId, Context) of
         undefined ->
             {error, enoent};
         UserRscId ->
-            case m_paysub:get_customer(stripe, UserRscId, Context) of
-                {ok, #{
-                    <<"psp_customer_id">> := CustomerId
-                }} ->
-                    ReturnUrl1 = case ReturnUrl of
-                        undefined -> m_rsc:p(UserRscId, page_url_abs, Context);
-                        RUrl -> RUrl
-                    end,
-                    ReturnUrl2 = z_context:abs_url(ReturnUrl1, Context),
-                    Locale = case m_rsc:p(UserRscId, pref_language, Context) of
-                        undefined -> z_context:language(Context);
-                        Lang -> Lang
-                    end,
-                    Payload = #{
-                        customer => CustomerId,
-                        return_url => ReturnUrl2,
-                        locale => Locale
-                    },
-                    case paysub_stripe_api:fetch(post, ["billing_portal", "sessions"], Payload, Context) of
+            case is_allowed_portal_session(UserRscId, Context) of
+                true ->
+                    case m_paysub:get_customer(stripe, UserRscId, Context) of
                         {ok, #{
-                            <<"url">> := Url
+                            <<"psp_customer_id">> := CustomerId
                         }} ->
-                            {ok, Url};
-                        {error, Reason} = Error ->
-                            ?LOG_WARNING(#{
-                                in => zotonic_mod_paysub,
-                                text => <<"Error fetching Stripe billing portal URL">>,
-                                result => error,
-                                reason => Reason,
-                                psp => stripe,
-                                psp_customer_id => CustomerId,
+                            ReturnUrl1 = case ReturnUrl of
+                                undefined -> m_rsc:p(UserRscId, page_url_abs, Context);
+                                RUrl -> RUrl
+                            end,
+                            ReturnUrl2 = z_context:abs_url(ReturnUrl1, Context),
+                            Locale = case m_rsc:p(UserRscId, pref_language, Context) of
+                                undefined -> z_context:language(Context);
+                                Lang -> Lang
+                            end,
+                            Payload = #{
+                                customer => CustomerId,
+                                return_url => ReturnUrl2,
                                 locale => Locale
-                            }),
+                            },
+                            case paysub_stripe_api:fetch(post, ["billing_portal", "sessions"], Payload, Context) of
+                                {ok, #{
+                                    <<"url">> := Url
+                                }} ->
+                                    {ok, Url};
+                                {error, Reason} = Error ->
+                                    ?LOG_WARNING(#{
+                                        in => zotonic_mod_paysub,
+                                        text => <<"Error fetching Stripe billing portal URL">>,
+                                        result => error,
+                                        reason => Reason,
+                                        psp => stripe,
+                                        psp_customer_id => CustomerId,
+                                        locale => Locale
+                                    }),
+                                    Error
+                            end;
+                        {error, _} = Error ->
                             Error
                     end;
-                {error, _} = Error ->
-                    Error
+                false ->
+                    {error, eacces}
             end
     end.
+
+is_allowed_portal_session(Id, Context) ->
+    Id =:= z_acl:user(Context) orelse m_paysub:is_user_maincontact(Id, Context).
 
 
 %% @doc Start a Stripe checkout for the given payment/subscription request.

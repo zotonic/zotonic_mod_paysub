@@ -59,6 +59,7 @@
 
     is_subscriber/2,
     is_allowed_paysub/1,
+    is_user_maincontact/2,
 
     search_query_term/2,
     search_query/4,
@@ -150,10 +151,19 @@ m_get([ <<"is_subscriber">> ], _Msg, Context) ->
 m_get([ <<"is_subscriber">>, Id | Rest ], _Msg, Context) ->
     IsSubscriber = is_subscriber(Id, Context),
     {ok, {IsSubscriber, Rest}};
-m_get([ <<"is_customer_portal">>, <<"stripe">> | Rest ], _Msg, Context) ->
-    {ok, {paysub_stripe:is_customer_portal(z_acl:user(Context), Context), Rest}};
-m_get([ <<"customer_portal_session_url">>, <<"stripe">> | Rest ], _Msg, Context) ->
+m_get([ <<"is_customer_portal">>, <<"stripe">> ], _Msg, Context) ->
+    {ok, {paysub_stripe:is_customer_portal(z_acl:user(Context), Context), []}};
+m_get([ <<"is_customer_portal">>, <<"stripe">>, Id | Rest ], _Msg, Context) ->
+    {ok, {paysub_stripe:is_customer_portal(Id, Context), Rest}};
+m_get([ <<"customer_portal_session_url">>, <<"stripe">> ], _Msg, Context) ->
     case paysub_stripe:customer_portal_session_url(z_acl:user(Context), Context) of
+        {ok, Url} ->
+            {ok, {Url, []}};
+        {error, _} = Error ->
+            Error
+    end;
+m_get([ <<"customer_portal_session_url">>, <<"stripe">>, Id | Rest ], _Msg, Context) ->
+    case paysub_stripe:customer_portal_session_url(Id, Context) of
         {ok, Url} ->
             {ok, {Url, Rest}};
         {error, _} = Error ->
@@ -1811,6 +1821,8 @@ delete_price(PSP, PriceId, Context) ->
     Context :: z:context(),
     Result :: {ok, map()} | {error, term()}.
 get_price(_PSP, undefined, _Context) ->
+    {error, enoent};
+get_price(_PSP, <<>>, _Context) ->
     {error, enoent};
 get_price(PSP, PriceIdOrName, Context) when is_binary(PriceIdOrName) ->
     z_db:qmap_props_row("

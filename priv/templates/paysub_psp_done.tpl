@@ -125,7 +125,7 @@ Page to show when returned from PSP
                             {% endif %}
                             <form id="signup-pw-reset" class="form" action="postback">
                                 <div class="form-group">
-                                    <label for="username" class="control-label">{_ Username _}</label>
+                                    <label for="username" class="control-label">{_ New username _}</label>
                                     <input type="text" id="username" name="username" class="form-control" required inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="username" value="{{ payment.user_info.username|escape }}">
                                     {% validate id="username" type={presence} %}
                                     <p class="alert alert-error" style="display: none" id="err-username">
@@ -133,7 +133,7 @@ Page to show when returned from PSP
                                     </p>
                                 </div>
                                 <div class="form-group">
-                                    <label for="password" class="control-label">{_ Password _}</label>
+                                    <label for="password" class="control-label">{_ New password _}</label>
                                     <input id="password" type="password" name="password" autocomplete="new-password" class="form-control" required autofocus
                                     {% if m.authentication.password_min_length as min %}minlength="{{ min }}"{% endif %}
                                     {% if m.authentication.password_regex as regex %}pattern="{{ regex|escape }}"{% endif %}>

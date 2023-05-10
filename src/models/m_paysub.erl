@@ -681,12 +681,14 @@ search_query_term(#search_query_term{ term = <<"is_subscriber">>, arg = Arg }, C
             <<" select sub.rsc_id
                 from paysub_subscription sub
                 where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                  and sub.rsc_id is not null
             ">>;
         is_integer(PredId) ->
             % All subscribers and their main contacts
             <<" select sub.rsc_id
                 from paysub_subscription sub
                 where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                  and sub.rsc_id is not null
                 union
                 select mce.object_id
                 from paysub_subscription sub
@@ -694,6 +696,7 @@ search_query_term(#search_query_term{ term = <<"is_subscriber">>, arg = Arg }, C
                     on mce.subject_id = sub.rsc_id
                     and mce.predicate_id = ", (integer_to_binary(PredId))/binary, "
                 where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                  and sub.rsc_id is not null
             ">>
     end,
     case z_convert:to_bool(Arg) of

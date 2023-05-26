@@ -163,17 +163,7 @@
             <tr>
                 <th>{_ PSP _}</th>
                 <td>
-                    {# TODO: make flexible for PSP #}
-                    {% if p.psp == 'stripe' %}
-                        <a href="https://dashboard.stripe.com/subscriptions/{{ p.psp_subscription_id|urlencode }}"
-                           class="btn btn-primary btn-xs" target="payment-psp">
-                            <span class="glyphicon glyphicon-new-window"></span>
-                            {% trans "view at {psp}" psp= p.psp|capfirst|escape %}
-                        </a>
-                    {% else %}
-                        {{ p.psp|escape }}
-                        <span class="text-muted">| {{ p.psp_subscription_id|escape }}</span>
-                    {% endif %}
+                    {% catinclude "psp/_subscription_link.tpl" [p.psp] sub=p %}
                 </td>
             </tr>
         </table>
@@ -183,8 +173,6 @@
         </p>
     {% endif %}
 
-    <div class="modal-footer">
-        {% button class="btn btn-primary" action={dialog_close} text=_"Close" tag="a" %}
-    </div>
+    {% catinclude "psp/_subscription_footer.tpl" [p.psp] sub=p %}
 
 {% endwith %}

@@ -39,6 +39,11 @@
     observe_survey_result_columns/3,
     observe_survey_result_column_values/3,
 
+    observe_export_resource_filename/2,
+    observe_export_resource_header/2,
+    observe_export_resource_data/2,
+    observe_export_resource_encode/2,
+
     init/1,
     manage_schema/2
 ]).
@@ -151,8 +156,20 @@ event(#submit{ message = {set_usernamepw, Args}, form = Form }, Context) ->
                 user_id => UserId
             }),
             z_render:wire({alert, [{text, ?__("Sorry, this checkout could not be fetched.", Context)}]}, Context)
+    end;
+event(#submit{ message = {set_subscription_status, Args} }, Context) ->
+    case m_paysub:is_allowed_paysub(Context) of
+        true ->
+            {id, SubId} = proplists:lookup(id, Args),
+            Update = #{
+                status => z_context:get_q(<<"status">>, Context)
+            },
+            m_paysub:update_subscription(SubId, Update, Context),
+            OnSuccess = proplists:get_all_values(on_success, Args),
+            z_render:wire(OnSuccess, Context);
+        false ->
+            z_render:growl(?__("You are not allowed to edit products.", Context), Context)
     end.
-
 
 %% @doc Modify the user group based on the active subscriptions. If no subscription found
 %% Then the group `ug_inactive_member` is added.
@@ -300,6 +317,28 @@ observe_survey_result_column_values(#survey_result_column_values{
         false ->
             Vs
     end.
+
+
+%% @doc Export data
+observe_export_resource_filename(#export_resource_filename{ dispatch = paysub_export_subscriptions }, Context) ->
+    paysub_export_subscriptions:filename(Context);
+observe_export_resource_filename(_, _) ->
+    undefined.
+
+observe_export_resource_header(#export_resource_header{ dispatch = paysub_export_subscriptions }, Context) ->
+    paysub_export_subscriptions:header(Context);
+observe_export_resource_header(_, _) ->
+    undefined.
+
+observe_export_resource_data(#export_resource_data{ dispatch = paysub_export_subscriptions, state = State }, Context) ->
+    paysub_export_subscriptions:data(State, Context);
+observe_export_resource_data(_, _) ->
+    undefined.
+
+observe_export_resource_encode(#export_resource_encode{ dispatch = paysub_export_subscriptions, state = State, data = Data }, Context) ->
+    paysub_export_subscriptions:encode(Data, State, Context);
+observe_export_resource_encode(_, _) ->
+    undefined.
 
 
 

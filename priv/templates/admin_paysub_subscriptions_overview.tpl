@@ -4,6 +4,10 @@
 
 {% block content %}
     <div class="admin-header">
+        <a href="{% url paysub_export_subscriptions %}" rel="download" class="btn btn-default pull-right">
+            {_ Download CSV _}
+        </a>
+
         <h2>
             {_ Payments &amp; Subscriptions &ndash; Subscriptions _}
             {% if q.qrsc_id %}

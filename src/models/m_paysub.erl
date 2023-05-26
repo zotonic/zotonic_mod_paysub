@@ -108,6 +108,7 @@
 
     provision_subscription/4,
     sync_subscription/4,
+    update_subscription/3,
     delete_subscription/3,
 
     update_customer_rsc_id/4,
@@ -2166,7 +2167,7 @@ provision_subscription(PSP, PspSubId, CheckoutNr, Context) ->
         end,
         Context).
 
--spec sync_subscription(PSP, Sub, PriceIds, Context) -> ok when
+-spec sync_subscription(PSP, Sub, PriceIds, Context) -> ok | {error, term()} when
     PSP :: atom() | binary(),
     Sub :: map(),
     PriceIds :: list( binary() ),
@@ -2187,6 +2188,19 @@ sync_subscription(PSP,  #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Co
         Context)
     of
         {ok, SubId} ->
+            notify_subscription(SubId, false, Context),
+            ok;
+        {error, _} = E ->
+            E
+    end.
+
+-spec update_subscription(SubId, Sub, Context) -> ok | {error, term()} when
+    SubId :: integer(),
+    Sub :: map(),
+    Context :: z:context().
+update_subscription(SubId, Sub, Context) ->
+    case z_db:update(paysub_subscription, SubId, Sub, Context) of
+        {ok, _} ->
             notify_subscription(SubId, false, Context),
             ok;
         {error, _} = E ->

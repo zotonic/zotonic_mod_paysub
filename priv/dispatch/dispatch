@@ -16,5 +16,9 @@
     {paysub_admin_products_overview, [ "admin", "paysub", "products" ], controller_admin,
             [ {template, "admin_paysub_products_overview.tpl"} ]},
     {paysub_admin_payments_overview, [ "admin", "paysub", "payments" ], controller_admin,
-            [ {template, "admin_paysub_payments_overview.tpl"} ]}
+            [ {template, "admin_paysub_payments_overview.tpl"} ]},
+
+    % Export of data
+    {paysub_export_subscriptions, [ "admin", "paysub", "download", "subscriptions" ],
+            controller_export, [ {content_type, csv} ]}
 ].

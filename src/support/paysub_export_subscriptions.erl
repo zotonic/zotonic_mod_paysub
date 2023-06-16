@@ -41,6 +41,7 @@ fetch_data(Context) ->
             sub.period_end as period_end,
             cust.psp_customer_id as psp_customer_id,
             cust.rsc_id as user_id,
+            rsc.name as user_unique_name,
             cust.name as name,
             cust.email as email,
             cust.address_country as country,
@@ -60,6 +61,8 @@ fetch_data(Context) ->
             left join paysub_customer cust
                 on cust.psp = sub.psp
                 and cust.psp_customer_id = sub.psp_customer_id
+            left join rsc rsc
+                on cust.rsc_id = rsc.id
         order by sub.started_at desc
         ",
         Context).
@@ -107,6 +110,7 @@ p(Data, P) ->
 cols() ->
     [
         <<"user_id">>,
+        <<"user_unique_name">>,
         <<"name">>,
         <<"email">>,
         <<"psp">>,

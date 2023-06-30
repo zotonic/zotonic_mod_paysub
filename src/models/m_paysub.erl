@@ -94,6 +94,7 @@
 
     sync_products/3,
     sync_product/3,
+    get_product/3,
     update_product/3,
     delete_product/3,
 
@@ -986,6 +987,27 @@ get_product(ProdId, Context) ->
         select *
         from paysub_product
         where id = $1", [ ProdId ], Context)
+    of
+        {ok, Prod} ->
+            [Prod1] = products_add_prices([Prod], Context),
+            {ok, Prod1};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Get a product by PSP and PSP product id. Include all prices into the product.
+-spec get_product(PSP, PspProdId, Context) -> {ok, Product} | {error, Reason} when
+    PSP :: binary() | atom(),
+    PspProdId :: binary(),
+    Context :: z:context(),
+    Product :: map(),
+    Reason :: term().
+get_product(PSP, PspProdId, Context) ->
+    case z_db:qmap_props_row("
+        select *
+        from paysub_product
+        where psp = $1
+          and psp_product_id = $2", [ PSP, PspProdId ], Context)
     of
         {ok, Prod} ->
             [Prod1] = products_add_prices([Prod], Context),

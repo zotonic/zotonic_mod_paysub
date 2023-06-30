@@ -131,6 +131,9 @@ handle(<<"invoice.", _/binary>>, _Payload, _Context) ->
 %     when 'invoice.upcoming'
 %         invoice = event.data.object
 
+handle(<<"invoiceitem.", _/binary>>, _Ps, _Context) ->
+    ok;
+
 handle(<<"customer.created">>, Ps, Context) ->
     sync_customer(Ps, Context);
 handle(<<"customer.updated">>, Ps, Context) ->

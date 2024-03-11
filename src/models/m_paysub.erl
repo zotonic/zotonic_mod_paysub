@@ -675,7 +675,7 @@ is_user_maincontact(SubjectId, Context) ->
     QueryTerm :: #search_query_term{},
     Context :: z:context(),
     SqlTerm :: #search_sql_term{}.
-search_query_term(#search_query_term{ term = <<"is_subscriber">>, arg = Arg }, Context) ->
+search_query_term(#search_query_term{ term = <<"is_paysub_subscriber">>, arg = Arg }, Context) ->
     PredId = m_rsc:rid(hasmaincontact, Context),
     Select = if
         PredId =:= undefined ->
@@ -715,9 +715,167 @@ search_query_term(#search_query_term{ term = <<"is_subscriber">>, arg = Arg }, C
                 ]
             }
     end;
+search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, arg = Arg }, _Context) ->
+    case z_string:to_lower(z_convert:to_binary(Arg)) of
+        <<"all_active">> ->
+            % All subscribers with any active subscription
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ]
+            };
+        <<"all_inactive">> ->
+            % All subscribers without an active subscription
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status not in ('incomplete', 'trialing', 'active', 'past_due')
+                          and paysub.rsc_id is not null
+                    )
+                    and rsc.id not in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ]
+            };
+        <<"pastdue_noactive">> ->
+            % All subscribers past-due without an trialing/active subscription
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status in ('past_due')
+                          and paysub.rsc_id is not null
+                    )
+                    and rsc.id not in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status in ('trialing', 'active')
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ]
+            };
+        <<"canceled_now">> ->
+            % All subscribers that our in their cancelation period
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = 'canceled'
+                          and paysub.rsc_id is not null
+                          and paysub.cancel_at >= now()
+                    )
+                    and rsc.id not in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status in ('trialing', 'active', 'past_due')
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ]
+            };
+        <<"canceled_m1">> ->
+            % All subscribers that canceled in the last month
+            Date = z_datetime:prev_month(calendar:universal_time()),
+            search_sql_canceled_at(Date);
+        <<"canceled_y1">> ->
+            % All subscribers that canceled in the last year
+            Date = z_datetime:prev_year(calendar:universal_time()),
+            search_sql_canceled_at(Date);
+        <<"new_w1">> ->
+            % All subscribers that canceled in the last year
+            Date = z_datetime:prev_week(calendar:universal_time()),
+            search_sql_new_after(Date);
+        <<"new_m1">> ->
+            % All subscribers that canceled in the last year
+            Date = z_datetime:prev_month(calendar:universal_time()),
+            search_sql_new_after(Date);
+        <<"new_y1">> ->
+            % All subscribers that canceled in the last year
+            Date = z_datetime:prev_year(calendar:universal_time()),
+            search_sql_new_after(Date);
+        <<"now_", Status/binary>> ->
+            % All subscribers with a certain status at this moment
+            % where the subscription has not ended yet.
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = ">>, '$1', <<"
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                     )">>
+                ],
+                args = [ Status ]
+            };
+        Status ->
+            % All subscribers with a certain status at any moment
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = ">>, '$1', <<"
+                          and paysub.rsc_id is not null
+                     )">>
+                ],
+                args = [ Status ]
+            }
+    end;
 search_query_term(#search_sql_term{}, _Context) ->
     undefined.
 
+
+search_sql_canceled_at(Date) ->
+    #search_sql_term{
+        where = [
+            <<"rsc.id in (
+                select paysub.rsc_id
+                from paysub_subscription paysub
+                where paysub.status = 'canceled'
+                  and paysub.rsc_id is not null
+                  and paysub.canceled_at >= ">>, '$1', <<"
+            )
+            and rsc.id not in (
+                select paysub.rsc_id
+                from paysub_subscription paysub
+                where paysub.status in ('trialing', 'active', 'past_due')
+                  and paysub.rsc_id is not null
+                  and (ended_at is null or ended_at > now())
+            )">>
+        ],
+        args = [ Date ]
+    }.
+
+search_sql_new_after(Date) ->
+    #search_sql_term{
+        where = [
+            <<"rsc.id in (
+                select paysub.rsc_id
+                from paysub_subscription paysub
+                where paysub.status in ('trialing', 'active', 'past_due')
+                  and paysub.rsc_id is not null
+                  and (ended_at is null or ended_at > now())
+                  and (started_at >= ">>, '$1', <<")
+            )">>
+        ],
+        args = [ Date ]
+    }.
 
 %% @doc Perform queries, helpers for the observer_search_query in mod_paysub.erl
 search_query(invoices, #{ rsc_id := undefined }, {Offset, Limit}, Context) ->

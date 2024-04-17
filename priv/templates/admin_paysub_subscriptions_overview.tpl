@@ -118,6 +118,9 @@
                     page=q.page
                     pagelen=20
             }] as result %}
+
+            <p>{% trans "Found <b>{n}</b> subscriptions." n=result.total %}</p>
+
             {% include "_paysub_subscriptions_table.tpl" result=result %}
             {% pager result=result dispatch=`paysub_admin_subscriptions_overview` qargs hide_single_page %}
         {% endwith %}

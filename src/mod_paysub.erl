@@ -212,9 +212,12 @@ observe_search_query(#search_query{ search={paysub_subscriptions, Args}, offsetl
     case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{
-                rsc_id => proplists:get_value(rsc_id, Args),
-                price_id => proplists:get_value(price_id, Args),
-                product_id => proplists:get_value(product_id, Args)
+                <<"rsc_id">> => proplists:get_value(rsc_id, Args),
+                <<"price_id">> => proplists:get_value(price_id, Args),
+                <<"product_id">> => proplists:get_value(product_id, Args),
+                <<"status">> => proplists:get_value(status, Args),
+                <<"user_group_id">> => proplists:get_value(user_group_id, Args),
+                <<"psp">> => proplists:get_value(psp, Args)
             },
             m_paysub:search_query(subscriptions, Query, OffsetLimit, Context);
         false ->
@@ -251,25 +254,31 @@ observe_rsc_pivot_done(#rsc_pivot_done{ id = Id }, Context) ->
 observe_admin_menu(#admin_menu{}, Acc, Context) ->
     [
         #menu_item{
-            id=paysub_admin_invoices_overview,
+            id = paysub_admin_dashboard,
+            parent = admin_modules,
+            label = ?__("Payments - Dashboard", Context),
+            url = {paysub_admin_dashboard, []},
+            visiblecheck = {acl, use, mod_paysub}},
+        #menu_item{
+            id = paysub_admin_invoices_overview,
             parent = admin_modules,
             label = ?__("Payments - Invoices", Context),
             url = {paysub_admin_invoices_overview, []},
             visiblecheck = {acl, use, mod_paysub}},
         #menu_item{
-            id=paysub_admin_subscriptions_overview,
+            id = paysub_admin_subscriptions_overview,
             parent = admin_modules,
             label = ?__("Payments - Subscriptions", Context),
             url = {paysub_admin_subscriptions_overview, []},
             visiblecheck = {acl, use, mod_paysub}},
         #menu_item{
-            id=paysub_admin_products_overview,
+            id = paysub_admin_products_overview,
             parent = admin_modules,
             label = ?__("Payments - Products", Context),
             url = {paysub_admin_products_overview, []},
             visiblecheck = {acl, use, mod_paysub}},
         #menu_item{
-            id=paysub_admin_payments_overview,
+            id = paysub_admin_payments_overview,
             parent = admin_modules,
             label = ?__("Payments - Payments", Context),
             url = {paysub_admin_payments_overview, []},

@@ -1,4 +1,4 @@
-%% @copyright 2022-2023 Marc Worrell
+%% @copyright 2022-2024 Marc Worrell
 %% @doc Model for paid subscriptions
 %% @end
 
@@ -27,7 +27,7 @@
 %% a customer, you may choose to reopen and pay their closed invoices.
 
 
-%% Copyright 2022-2023 Marc Worrrell
+%% Copyright 2022-2024 Marc Worrrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -47,6 +47,15 @@
 -export([
     m_get/3,
 
+    subscription_products/1,
+    subscription_prices/1,
+
+    access_states/1,
+    active_states/0,
+    pending_states/1,
+    inactive_states/1,
+    all_states/0,
+
     billing_address/2,
     billing_email/2,
     billing_name/2,
@@ -60,6 +69,8 @@
     is_subscriber/2,
     is_allowed_paysub/1,
     is_user_maincontact/2,
+
+    overview_ug/1,
 
     search_query_term/2,
     search_query/4,
@@ -157,6 +168,8 @@ m_get([ <<"is_customer_portal">>, <<"stripe">> ], _Msg, Context) ->
     {ok, {paysub_stripe:is_customer_portal(z_acl:user(Context), Context), []}};
 m_get([ <<"is_customer_portal">>, <<"stripe">>, Id | Rest ], _Msg, Context) ->
     {ok, {paysub_stripe:is_customer_portal(Id, Context), Rest}};
+m_get([ <<"is_unpaid_access">> | Rest ], _Msg, Context) ->
+    {ok, {m_config:get_boolean(mod_paysub, is_unpaid_access, Context), Rest}};
 m_get([ <<"customer_portal_session_url">>, <<"stripe">> ], _Msg, Context) ->
     case paysub_stripe:customer_portal_session_url(z_acl:user(Context), Context) of
         {ok, Url} ->
@@ -371,7 +384,163 @@ m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
             {ok, {Info, Rest}};
         {error, _} = Error ->
             Error
+    end;
+m_get([ <<"overview_by">>, <<"user_group">> | Rest ], _Msg, Context) ->
+    case is_allowed_paysub(Context) of
+        true ->
+            case overview_ug(Context) of
+                {ok, L} ->
+                    {ok, {L, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            {error, eacces}
+    end;
+m_get([ <<"subscriptions">>, <<"user_groups">> | Rest ], _Msg, Context) ->
+    {ok, {user_groups(Context), Rest}};
+m_get([ <<"subscriptions">>, <<"states">> | Rest ], _Msg, _Context) ->
+    {ok, {all_states(), Rest}};
+m_get([ <<"subscriptions">>, <<"psps">> | Rest ], _Msg, Context) ->
+    {ok, {subscription_psps(Context), Rest}};
+m_get([ <<"subscriptions">>, <<"products">> | Rest ], _Msg, Context) ->
+    {ok, {subscription_products(Context), Rest}};
+m_get([ <<"subscriptions">>, <<"prices">> | Rest ], _Msg, Context) ->
+    {ok, {subscription_prices(Context), Rest}}.
+
+-spec subscription_products(Context) -> ByPSP when
+    Context :: z:context(),
+    ByPSP :: #{ PSP := list( Product ) },
+    PSP :: binary(),
+    Product :: map().
+subscription_products(Context) ->
+    {ok, Rows} = z_db:qmap("
+        select distinct prod.*
+        from paysub_subscription sub,
+             paysub_subscription_item item,
+             paysub_price price,
+             paysub_product prod
+        where item.subscription_id = sub.id
+          and item.psp = price.psp
+          and item.psp_price_id = price.psp_price_id
+          and price.psp = prod.psp
+          and price.psp_product_id = prod.psp_product_id
+        order by prod.psp, prod.name
+        ",
+        Context),
+    lists:foldr(
+        fun(#{ <<"psp">> := PSP } = M, Acc) ->
+            Curr = maps:get(PSP, Acc, []),
+            Acc#{
+                PSP => [ M | Curr ]
+            }
+        end,
+        #{},
+        Rows).
+
+
+-spec subscription_prices(Context) -> ByPSP when
+    Context :: z:context(),
+    ByPSP :: #{ PSP := list( Price ) },
+    PSP :: binary(),
+    Price :: map().
+subscription_prices(Context) ->
+    {ok, Rows} = z_db:qmap("
+        select distinct price.*, prod.name as prod_name, prod.id as prod_id
+        from paysub_subscription sub,
+             paysub_subscription_item item,
+             paysub_price price,
+             paysub_product prod
+        where item.subscription_id = sub.id
+          and item.psp = price.psp
+          and item.psp_price_id = price.psp_price_id
+          and price.psp = prod.psp
+          and price.psp_product_id = prod.psp_product_id
+        order by price.psp, prod.name, price.psp_price_id
+        ",
+        Context),
+    lists:foldr(
+        fun(#{ <<"psp">> := PSP } = M, Acc) ->
+            Curr = maps:get(PSP, Acc, []),
+            Acc#{
+                PSP => [ M | Curr ]
+            }
+        end,
+        #{},
+        Rows).
+
+
+-spec subscription_psps(Context) -> PSPs when
+    Context :: z:context(),
+    PSPs :: [ binary() ].
+subscription_psps(Context) ->
+    Rs = z_db:q("
+        select distinct(psp)
+        from paysub_subscription",
+        Context),
+    [ PSP || {PSP} <- Rs ].
+
+-spec user_groups(Context) -> RscIds when
+    Context :: z:context(),
+    RscIds :: [ m_rsc:resource_id() ].
+user_groups(Context) ->
+    Rs = z_db:q("
+        select distinct(user_group_id)
+        from paysub_product
+        where user_group_id is not null",
+        Context),
+    [ Id || {Id} <- Rs ].
+
+
+-spec access_states(Context) -> States when
+    Context :: z:context(),
+    States :: [ binary() ].
+access_states(Context) ->
+    active_states() ++ pending_states(Context).
+
+-spec pending_states(Context) -> States when
+    Context :: z:context(),
+    States :: [ binary() ].
+pending_states(Context) ->
+    case m_config:get_boolean(mod_paysub, is_unpaid_access, Context) of
+        true ->
+            [
+                <<"incomplete_expired">>,
+                <<"unpaid">>
+            ];
+        false ->
+            []
     end.
+
+-spec active_states() -> States when
+    States :: [ binary() ].
+active_states() ->
+    [
+        <<"incomplete">>,
+        <<"trialing">>,
+        <<"active">>,
+        <<"past_due">>
+    ].
+
+-spec inactive_states(Context) -> States when
+    Context :: z:context(),
+    States :: [ binary() ].
+inactive_states(Context) ->
+    all_states() -- active_states() -- pending_states(Context).
+
+
+-spec all_states() -> States when
+    States :: [ binary() ].
+all_states() ->
+    [
+        <<"incomplete">>,
+        <<"incomplete_expired">>,
+        <<"trialing">>,
+        <<"active">>,
+        <<"past_due">>,
+        <<"canceled">>,
+        <<"unpaid">>
+    ].
 
 
 %% @doc Return a map with the billing address and email of the person. The values are
@@ -640,13 +809,14 @@ is_subscriber(Id, Context) ->
                 true ->
                     MainContactOf = m_edge:subjects(UserId, hasmaincontact, Context),
                     SubscriberIds = [ UserId | MainContactOf ],
+                    States = pending_states(Context) ++ active_states(),
                     Count = z_db:q1("
                         select count(*)
                         from paysub_subscription
                         where rsc_id = any($1::int[])
-                          and status in ('incomplete', 'trialing', 'active', 'past_due')
+                          and status = any($2)
                         ",
-                        [ SubscriberIds ],
+                        [ SubscriberIds, States ],
                         Context),
                     Count > 0;
                 false ->
@@ -670,53 +840,143 @@ is_user_maincontact(SubjectId, Context) ->
     lists:member(z_acl:user(Context), HasMainContact).
 
 
+%% @doc Query the database for the overview of status per user group.
+-spec overview_ug(Context) -> {ok, map()} | {error, term()} when
+    Context :: z:context().
+overview_ug(Context) ->
+    UserGroups = z_db:q("
+        select distinct(user_group_id)
+        from paysub_product
+        where user_group_id is not null",
+        Context),
+    UserGroupIds = filter_sort:sort([ Id || {Id} <- UserGroups ], <<"title">>, Context),
+    StatusPerUG = z_db:q("
+        select prod.user_group_id, sub.status, count(*)
+        from paysub_product prod,
+             paysub_price price,
+             paysub_subscription_item item,
+             paysub_subscription sub
+        where sub.status <> 'canceled'
+          and item.subscription_id = sub.id
+          and item.psp = price.psp
+          and item.psp_price_id = price.psp_price_id
+          and price.psp = prod.psp
+          and price.psp_product_id = prod.psp_product_id
+          and prod.user_group_id is not null
+        group by prod.user_group_id, sub.status
+        ",
+        Context),
+    Grouped = overview_ug_1(StatusPerUG, #{}),
+    Totals = overview_ug_2(StatusPerUG, #{ <<"total">> => 0 }),
+    {ok, #{
+        states => all_states() -- [ <<"canceled">> ],
+        user_groups => UserGroupIds,
+        status => Grouped,
+        total => Totals
+    }}.
+
+overview_ug_1([], Acc) ->
+    Acc;
+overview_ug_1([{Id, Status, Count}|Rest], Acc) ->
+    PerId = maps:get(Id, Acc, #{ <<"total">> => 0 }),
+    PerId1 = PerId#{
+        Status => Count,
+        <<"total">> => maps:get(<<"total">>, PerId) + Count
+    },
+    Acc1 = Acc#{
+        Id => PerId1
+    },
+    overview_ug_1(Rest, Acc1).
+
+overview_ug_2([], Acc) ->
+    Acc;
+overview_ug_2([{_Id, Status, Count}|Rest], Acc) ->
+    Acc1 = Acc#{
+        Status => maps:get(Status, Acc, 0) + Count,
+        <<"total">> => maps:get(<<"total">>, Acc) + Count
+    },
+    overview_ug_2(Rest, Acc1).
+
+
+
 %% @doc Extra query terms. Query for subscribers.
 -spec search_query_term(QueryTerm, Context) -> SqlTerm when
     QueryTerm :: #search_query_term{},
     Context :: z:context(),
     SqlTerm :: #search_sql_term{}.
+search_query_term(#search_query_term{ term = <<"is_subscriber">> } = T, Context) ->
+    ?LOG_INFO(#{
+        in => zotonic_mod_paysub,
+        text => <<"Use of deprecated search term 'is_subscriber', use 'is_paysub_subscriber' instead">>
+    }),
+    search_query_term(T#search_query_term{ term = <<"is_paysub_subscriber">> }, Context);
 search_query_term(#search_query_term{ term = <<"is_paysub_subscriber">>, arg = Arg }, Context) ->
     PredId = m_rsc:rid(hasmaincontact, Context),
     Select = if
         PredId =:= undefined ->
             % All subscribers
-            <<" select sub.rsc_id
-                from paysub_subscription sub
-                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
-                  and sub.rsc_id is not null
-            ">>;
+            [
+                <<" select sub.rsc_id
+                    from paysub_subscription sub
+                    where sub.status = any(">>, '$1', <<")
+                      and sub.rsc_id is not null
+                ">>
+            ];
         is_integer(PredId) ->
             % All subscribers and their main contacts
-            <<" select sub.rsc_id
-                from paysub_subscription sub
-                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
-                  and sub.rsc_id is not null
-                union
-                select mce.object_id
-                from paysub_subscription sub
-                    join edge mce
-                    on mce.subject_id = sub.rsc_id
-                    and mce.predicate_id = ", (integer_to_binary(PredId))/binary, "
-                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
-                  and sub.rsc_id is not null
-            ">>
+            [
+                <<" select sub.rsc_id
+                    from paysub_subscription sub
+                    where sub.status = any(">>, '$1', <<")
+                      and sub.rsc_id is not null
+                    union
+                    select mce.object_id
+                    from paysub_subscription sub
+                        join edge mce
+                        on mce.subject_id = sub.rsc_id
+                        and mce.predicate_id = ", (integer_to_binary(PredId))/binary, "
+                    where sub.status = any(">>, '$1', <<")
+                      and sub.rsc_id is not null
+                ">>
+            ]
     end,
+    States = pending_states(Context) ++ active_states(),
     case z_convert:to_bool(Arg) of
         true ->
             #search_sql_term{
-                where = [
-                    <<"rsc.id in (", Select/binary, ")">>
+                where = lists:flatten([
+                    <<"rsc.id in (">>, Select, <<")">>
+                ]),
+                args = [
+                    States
                 ]
             };
         false ->
             #search_sql_term{
-                where = [
-                    <<"rsc.id not in (", Select/binary, ")">>
+                where = lists:flatten([
+                    <<"rsc.id not in (">>, Select, <<")">>
+                ]),
+                args = [
+                    States
                 ]
             }
     end;
-search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, arg = Arg }, _Context) ->
+search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, arg = Arg }, Context) ->
     case z_string:to_lower(z_convert:to_binary(Arg)) of
+        <<"all_access">> ->
+            % All subscribers with any active or pending subscription
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = any(">>, '$1', <<")
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ],
+                args = [ access_states(Context) ]
+            };
         <<"all_active">> ->
             % All subscribers with any active subscription
             #search_sql_term{
@@ -724,48 +984,112 @@ search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, a
                     <<"rsc.id in (
                         select paysub.rsc_id
                         from paysub_subscription paysub
-                        where paysub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                        where paysub.status = any(">>, '$1', <<")
                           and paysub.rsc_id is not null
                           and (ended_at is null or ended_at > now())
                     )">>
+                ],
+                args = [ active_states() ]
+            };
+        <<"all_pending">> ->
+            % All subscribers without an active subscription but with a pending subscription
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = any(">>, '$1', <<")
+                          and paysub.rsc_id is not null
+                    )
+                    and rsc.id not in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = any(">>, '$2', <<")
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ],
+                args = [
+                    pending_states(Context),
+                    active_states()
                 ]
             };
         <<"all_inactive">> ->
-            % All subscribers without an active subscription
+            % All subscribers without an active subscription, having no access
             #search_sql_term{
                 where = [
                     <<"rsc.id in (
                         select paysub.rsc_id
                         from paysub_subscription paysub
-                        where paysub.status not in ('incomplete', 'trialing', 'active', 'past_due')
+                        where paysub.status = any(">>, '$1', <<")
                           and paysub.rsc_id is not null
                     )
                     and rsc.id not in (
                         select paysub.rsc_id
                         from paysub_subscription paysub
-                        where paysub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                        where paysub.status = any(">>, '$2', <<")
                           and paysub.rsc_id is not null
                           and (ended_at is null or ended_at > now())
                     )">>
+                ],
+                args = [
+                    inactive_states(Context),
+                    access_states(Context)
                 ]
             };
-        <<"pastdue_noactive">> ->
-            % All subscribers past-due without an trialing/active subscription
+        <<"pastdue_noaccess">> ->
+            % All subscribers past-due without an active other subscription
             #search_sql_term{
                 where = [
                     <<"rsc.id in (
                         select paysub.rsc_id
                         from paysub_subscription paysub
-                        where paysub.status in ('past_due')
+                        where paysub.status = 'past_due'
                           and paysub.rsc_id is not null
                     )
                     and rsc.id not in (
                         select paysub.rsc_id
                         from paysub_subscription paysub
-                        where paysub.status in ('trialing', 'active')
+                        where paysub.status = any(">>, '$1', <<")
                           and paysub.rsc_id is not null
                           and (ended_at is null or ended_at > now())
                     )">>
+                ],
+                args = [
+                    access_states(Context) -- [ <<"past_due">> ]
+                ]
+            };
+        <<"incomplete_noaccess">> ->
+            % All subscribers with status incomplete without an other access subscription
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status in ('incomplete', 'incomplete_expired')
+                          and paysub.rsc_id is not null
+                    )
+                    and rsc.id not in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.status = any(">>, '$1', <<")
+                          and paysub.rsc_id is not null
+                          and (ended_at is null or ended_at > now())
+                    )">>
+                ],
+                args = [
+                    access_states(Context) -- [ <<"incomplete">>, <<"incomplete_expired">> ]
+                ]
+            };
+        <<"incomplete_any">> ->
+            % All subscribers with an incomplete subscription
+            #search_sql_term{
+                where = [
+                    <<"select paysub.rsc_id
+                       from paysub_subscription paysub
+                       where paysub.status in ('incomplete', 'incomplete_expired')
+                         and paysub.rsc_id is not null
+                    ">>
                 ]
             };
         <<"canceled_now">> ->
@@ -791,23 +1115,23 @@ search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, a
         <<"canceled_m1">> ->
             % All subscribers that canceled in the last month
             Date = z_datetime:prev_month(calendar:universal_time()),
-            search_sql_canceled_at(Date);
+            search_sql_canceled_at(Date, Context);
         <<"canceled_y1">> ->
             % All subscribers that canceled in the last year
             Date = z_datetime:prev_year(calendar:universal_time()),
-            search_sql_canceled_at(Date);
+            search_sql_canceled_at(Date, Context);
         <<"new_w1">> ->
             % All subscribers that canceled in the last year
             Date = z_datetime:prev_week(calendar:universal_time()),
-            search_sql_new_after(Date);
+            search_sql_new_after(Date, Context);
         <<"new_m1">> ->
             % All subscribers that canceled in the last year
             Date = z_datetime:prev_month(calendar:universal_time()),
-            search_sql_new_after(Date);
+            search_sql_new_after(Date, Context);
         <<"new_y1">> ->
             % All subscribers that canceled in the last year
             Date = z_datetime:prev_year(calendar:universal_time()),
-            search_sql_new_after(Date);
+            search_sql_new_after(Date, Context);
         <<"now_", Status/binary>> ->
             % All subscribers with a certain status at this moment
             % where the subscription has not ended yet.
@@ -841,7 +1165,7 @@ search_query_term(#search_sql_term{}, _Context) ->
     undefined.
 
 
-search_sql_canceled_at(Date) ->
+search_sql_canceled_at(Date, Context) ->
     #search_sql_term{
         where = [
             <<"rsc.id in (
@@ -854,27 +1178,33 @@ search_sql_canceled_at(Date) ->
             and rsc.id not in (
                 select paysub.rsc_id
                 from paysub_subscription paysub
-                where paysub.status in ('trialing', 'active', 'past_due')
+                where paysub.status = any(">>, '$2', <<")
                   and paysub.rsc_id is not null
                   and (ended_at is null or ended_at > now())
             )">>
         ],
-        args = [ Date ]
+        args = [
+            Date,
+            access_states(Context)
+        ]
     }.
 
-search_sql_new_after(Date) ->
+search_sql_new_after(Date, Context) ->
     #search_sql_term{
         where = [
             <<"rsc.id in (
                 select paysub.rsc_id
                 from paysub_subscription paysub
-                where paysub.status in ('trialing', 'active', 'past_due')
+                where paysub.status = any(">>, '$2', <<")
                   and paysub.rsc_id is not null
                   and (ended_at is null or ended_at > now())
                   and (started_at >= ">>, '$1', <<")
             )">>
         ],
-        args = [ Date ]
+        args = [
+            Date,
+            access_states(Context)
+        ]
     }.
 
 %% @doc Perform queries, helpers for the observer_search_query in mod_paysub.erl
@@ -928,14 +1258,9 @@ search_query(invoices, #{ rsc_id := UserId }, {Offset, Limit}, Context) ->
                 is_total_estimated = false
             }
     end;
-search_query(subscriptions, #{ product_id := ProdId }, {Offset, Limit}, Context) when
-        ProdId =/= <<>>, ProdId =/= undefined ->
-    ProdId1 = z_convert:to_integer(ProdId),
-    {ok, Subs} = z_db:qmap_props("
-        select sub.*,
-               cust.id as customer_id,
-               cust.rsc_id as rsc_id,
-               cust.email as email
+search_query(subscriptions, Filters, {Offset, Limit}, Context) ->
+    {Ws, Args} = subscription_terms(maps:to_list(Filters), [], [], Context),
+    From = lists:flatten(["
         from paysub_subscription sub
             left join paysub_customer cust
                 on sub.psp = cust.psp
@@ -948,99 +1273,41 @@ search_query(subscriptions, #{ product_id := ProdId }, {Offset, Limit}, Context)
             join paysub_product product
                 on price.psp = product.psp
                 and price.psp_product_id = product.psp_product_id
-        where product.id = $3
-        order by sub.started_at desc, id desc
-        offset $1 limit $2
         ",
-        [ Offset-1, Limit, ProdId1 ],
-        Context),
-    Subs1 = subscription_add_prices(Subs, Context),
-    #search_result{
-        result = Subs1,
-        total = count_product_subscriptions(ProdId1, Context),
-        is_total_estimated = false
-    };
-search_query(subscriptions, #{ price_id := PriceId }, {Offset, Limit}, Context) when
-        PriceId =/= <<>>, PriceId =/= undefined ->
-    PriceId1 = z_convert:to_integer(PriceId),
-    {ok, Subs} = z_db:qmap_props("
+        if
+            Ws =:= [] -> "";
+            true -> [ "where ", lists:join(" and ", Ws) ]
+        end
+    ]),
+    N = length(Args),
+    Query = lists:flatten(["
         select sub.*,
                cust.id as customer_id,
-               cust.rsc_id as rsc_id,
-               cust.email as email
-        from paysub_subscription sub
-            left join paysub_customer cust
-                on sub.psp = cust.psp
-                and sub.psp_customer_id = cust.psp_customer_id
-            join paysub_subscription_item item
-                on item.subscription_id = sub.id
-            join paysub_price price
-                on item.psp = price.psp
-                and item.psp_price_id = price.psp_price_id
-        where price.id = $3
-        order by sub.started_at desc, id desc
-        offset $1 limit $2
-        ",
-        [ Offset-1, Limit, PriceId1 ],
-        Context),
+               cust.psp_customer_id as psp_customer_id,
+               cust.rsc_id as user_id,
+               cust.name as name,
+               cust.email as email,
+               cust.address_country as country,
+               product.name as product_name,
+               price.name as price_name,
+               price.currency as price_currency,
+               price.amount as price_amount
+        ", From, "
+        order by sub.started_at desc, sub.id desc
+        offset $", integer_to_list(N+1), "
+        limit $", integer_to_list(N+2)
+    ]),
+    Count = lists:flatten(["
+        select count(*) ", From
+    ]),
+    {ok, Subs} = z_db:qmap_props(Query, Args ++ [ Offset-1, Limit ], Context),
+    Total = z_db:q1(Count, Args, Context),
     Subs1 = subscription_add_prices(Subs, Context),
     #search_result{
         result = Subs1,
-        total = count_price_subscriptions(PriceId1, Context),
+        total = Total,
         is_total_estimated = false
     };
-search_query(subscriptions, #{ rsc_id := undefined }, {Offset, Limit}, Context) ->
-    {ok, Subs} = z_db:qmap_props("
-        select sub.*,
-               cust.id as customer_id,
-               cust.rsc_id as rsc_id,
-               cust.email as email
-        from paysub_subscription sub
-            left join paysub_customer cust
-                on sub.psp = cust.psp
-                and sub.psp_customer_id = cust.psp_customer_id
-        order by sub.period_start desc, id desc
-        offset $1 limit $2
-        ",
-        [ Offset-1, Limit ],
-        Context),
-    Subs1 = subscription_add_prices(Subs, Context),
-    #search_result{
-        result = Subs1,
-        total = count_subscriptions(Context),
-        is_total_estimated = false
-    };
-search_query(subscriptions, #{ rsc_id := UserId }, {Offset, Limit}, Context) ->
-    case m_rsc:rid(UserId, Context) of
-        undefined ->
-            #search_result{
-                result = [],
-                total = 0,
-                is_total_estimated = false
-            };
-        RscId ->
-            {ok, Subs} = z_db:qmap_props("
-                select sub.*,
-                       cust.id as customer_id,
-                       cust.rsc_id as rsc_id,
-                       cust.email as email
-                from paysub_subscription sub
-                    left join paysub_customer cust
-                    on sub.psp = cust.psp
-                    and sub.psp_customer_id = cust.psp_customer_id
-                where sub.rsc_id = $3
-                order by sub.started_at desc, id desc
-                offset $1 limit $2
-                ",
-                [ Offset-1, Limit, RscId ],
-                Context),
-            Subs1 = subscription_add_prices(Subs, Context),
-            #search_result{
-                result = Subs1,
-                total = count_user_subscriptions(RscId, Context),
-                is_total_estimated = false
-            }
-    end;
 search_query(products, #{}, {Offset, Limit}, Context) ->
     {ok, Prods} = z_db:qmap_props("
         select *
@@ -1108,6 +1375,46 @@ search_query(payments, #{}, {Offset, Limit}, Context) ->
         total = count_payments(Context),
         is_total_estimated = false
     }.
+
+
+subscription_terms([], Ws, Args, _Context) ->
+    {Ws, lists:reverse(Args)};
+subscription_terms([ {_, undefined} | Ts ], Ws, Args, Context) ->
+    subscription_terms(Ts, Ws, Args, Context);
+subscription_terms([ {_, <<>>} | Ts ], Ws, Args, Context) ->
+    subscription_terms(Ts, Ws, Args, Context);
+subscription_terms([ {<<"rsc_id">>, Id} | Ts ], Ws, Args, Context) ->
+    Args1 = [ m_rsc:rid(Id, Context) | Args ],
+    Ws1 = [ "sub.rsc_id = $" ++ integer_to_list(length(Args1)) | Ws ],
+    subscription_terms(Ts, Ws1, Args1, Context);
+subscription_terms([ {<<"product_id">>, Id} | Ts ], Ws, Args, Context) ->
+    Args1 = [ z_convert:to_integer(Id) | Args ],
+    Ws1 = [ "product.id = $" ++ integer_to_list(length(Args1)) | Ws ],
+    subscription_terms(Ts, Ws1, Args1, Context);
+subscription_terms([ {<<"user_group_id">>, Id} | Ts ], Ws, Args, Context) ->
+    Args1 = [ m_rsc:rid(Id, Context) | Args ],
+    Ws1 = [ "product.user_group_id = $" ++ integer_to_list(length(Args1)) | Ws ],
+    subscription_terms(Ts, Ws1, Args1, Context);
+subscription_terms([ {<<"price_id">>, Id} | Ts ], Ws, Args, Context) ->
+    Args1 = [ z_convert:to_integer(Id) | Args ],
+    Ws1 = [ "price.id = $" ++ integer_to_list(length(Args1)) | Ws ],
+    subscription_terms(Ts, Ws1, Args1, Context);
+subscription_terms([ {<<"psp">>, PSP} | Ts ], Ws, Args, Context) ->
+    Args1 = [ PSP | Args ],
+    Ws1 = [ "sub.psp = $" ++ integer_to_list(length(Args1)) | Ws ],
+    subscription_terms(Ts, Ws1, Args1, Context);
+subscription_terms([ {<<"status">>, Status} | Ts ], Ws, Args, Context) ->
+    S = case Status of
+        <<"uncanceled">> -> all_states() -- [ <<"canceled">> ];
+        <<"allaccess">> -> access_states(Context);
+        <<"allactive">> -> active_states();
+        <<"allpending">> -> pending_states(Context);
+        _ -> [ Status ]
+    end,
+    Args1 = [ S | Args ],
+    Ws1 = [ "sub.status = any($" ++ integer_to_list(length(Args1)) ++")" | Ws ],
+    subscription_terms(Ts, Ws1, Args1, Context).
+
 
 %% @doc Count all products
 -spec count_products(Context) -> Count when
@@ -1255,42 +1562,8 @@ count_user_subscriptions(UserId, Context) ->
                 ", [RscId], Context)
     end.
 
-%% @doc Count all subscriptions with a certain price
--spec count_price_subscriptions(PriceId, Context) -> Count when
-    PriceId :: integer(),
-    Context :: z:context(),
-    Count :: non_neg_integer().
-count_price_subscriptions(PriceId, Context) ->
-    z_db:q1("
-        select count(*)
-        from paysub_subscription_item item
-            join paysub_price price
-                on price.psp = item.psp
-                and price.psp_price_id = item.psp_price_id
-        where price.id = $1", [ PriceId ], Context).
-
-%% @doc Count all subscriptions with a certain product
--spec count_product_subscriptions(ProductId, Context) -> Count when
-    ProductId :: integer(),
-    Context :: z:context(),
-    Count :: non_neg_integer().
-count_product_subscriptions(ProductId, Context) ->
-    z_db:q1("
-        select count(*)
-        from paysub_subscription_item item
-            join paysub_price price
-                on price.psp = item.psp
-                and price.psp_price_id = item.psp_price_id
-            join paysub_product product
-                on price.psp = product.psp
-                and price.psp_product_id = product.psp_product_id
-        where product.id = $1", [ ProductId ], Context).
-
-
-
 %% @doc Return the list of user groups the user has subscriptions for.
-%% Status can be: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid
-%% Only 'unpaid' and 'canceled' are considered inactive subscriptions.
+%% Status must be one of the access states.
 -spec user_groups( m_rsc:resource_id(), z:context() ) -> [ m_rsc:resource_id() ].
 user_groups(UserId0, Context) ->
     case m_rsc:rid(UserId0, Context) of
@@ -1309,10 +1582,10 @@ user_groups(UserId0, Context) ->
                     join paysub_subscription sub
                         on sub.id = item.subscription_id
                         and sub.psp = prod.psp
-                where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+                where sub.status = any($2)
                   and sub.rsc_id = $1
                   and prod.user_group_id is not null
-                ", [ UserId ], Context),
+                ", [ UserId, access_states(Context) ], Context),
             [ Id || {Id} <- Ids ]
     end.
 
@@ -1337,10 +1610,10 @@ users_groups(UserIds, Context) ->
             join paysub_subscription sub
                 on sub.id = item.subscription_id
                 and sub.psp = prod.psp
-        where sub.status in ('incomplete', 'trialing', 'active', 'past_due')
+        where sub.status = any($2)
           and sub.rsc_id = any($1)
           and prod.user_group_id is not null
-        ", [ UserIds ], Context),
+        ", [ UserIds, access_states(Context) ], Context),
     [ Id || {Id} <- Ids ].
 
 
@@ -1807,7 +2080,7 @@ get_customer(PSP, UserId, Context) when is_integer(UserId) ->
                     left join paysub_subscription sub
                         on sub.psp = cust.psp
                         and sub.psp_customer_id = cust.psp_customer_id
-                        and status in ('incomplete', 'trialing', 'active', 'past_due')
+                        and status = any($3)
                     left join paysub_invoice inv
                         on inv.psp = cust.psp
                         and inv.psp_customer_id = cust.psp_customer_id
@@ -1815,7 +2088,7 @@ get_customer(PSP, UserId, Context) when is_integer(UserId) ->
                   and cust.psp = $2
                 group by cust_id
                 order by ct desc, dt desc
-                ", [ UserId, PSP ], Context),
+                ", [ UserId, PSP, access_states(Context) ], Context),
             C = hd(lists:filter(fun(#{ <<"psp_customer_id">> := CId }) -> CId =:= CsId end, Cs)),
             {ok, C};
         {error, _} = Error ->

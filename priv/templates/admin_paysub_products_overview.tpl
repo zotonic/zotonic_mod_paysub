@@ -5,7 +5,7 @@
 {% block content %}
     <div class="admin-header">
         <h2>
-            {_ Payments &amp; Subscriptions &ndash; Products _}
+            {_ Products _}
         </h2>
     </div>
     {% if m.acl.is_admin or m.acl.is_allowed.use.mod_paysub %}

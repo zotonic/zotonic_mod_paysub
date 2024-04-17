@@ -9,6 +9,8 @@
     encode/3
     ]).
 
+-include_lib("zotonic_core/include/zotonic.hrl").
+
 filename(_Context) ->
     {ok, <<"subscriptions">>}.
 
@@ -25,47 +27,16 @@ data(_State, Context) ->
 
 encode(Data, _State, Context) ->
     Data1 = add_invoice(Data, Context),
-    {ok, lists:map(fun(P) -> p(Data1, P) end, cols())}.
+    {ok, lists:map(fun(P) -> p(Data1, P, Context) end, cols())}.
 
 fetch_data(Context) ->
-    z_db:qmap("
-        select
-            sub.psp as psp,
-            sub.psp_subscription_id as psp_subscription_id,
-            sub.status as status,
-            sub.started_at as started_at,
-            sub.ended_at as ended_at,
-            sub.cancel_at as cancel_at,
-            sub.canceled_at as canceled_at,
-            sub.period_start as period_start,
-            sub.period_end as period_end,
-            cust.psp_customer_id as psp_customer_id,
-            cust.rsc_id as user_id,
-            rsc.name as user_unique_name,
-            cust.name as name,
-            cust.email as email,
-            cust.address_country as country,
-            prod.name as product_name,
-            price.name as price_name,
-            price.currency as price_currency,
-            price.amount as price_amount
-        from paysub_subscription sub
-            join paysub_subscription_item item
-                on item.subscription_id = sub.id
-            join paysub_price price
-                on item.psp = price.psp
-                and item.psp_price_id = price.psp_price_id
-            join paysub_product prod
-                on prod.psp = price.psp
-                and prod.psp_product_id = price.psp_product_id
-            left join paysub_customer cust
-                on cust.psp = sub.psp
-                and cust.psp_customer_id = sub.psp_customer_id
-            left join rsc rsc
-                on cust.rsc_id = rsc.id
-        order by sub.started_at desc
-        ",
-        Context).
+    QArgs = z_context:get_qargs(Context),
+    QArgs1 = [ {Arg, Value} || {<<"q", Arg/binary>>, Value} <- QArgs ],
+    Filters = maps:from_list(QArgs1),
+    #search_result{
+        result = Rows
+    } = m_paysub:search_query(subscriptions, Filters, {1, 100_000}, Context),
+    {ok, Rows}.
 
 add_invoice(Sub, Context) ->
     #{
@@ -104,15 +75,64 @@ fetch_last_invoice(Psp, PspCustomerId, Context) ->
     end.
 
 
-p(Data, P) ->
+p(#{ <<"rsc_id">> := Id }, <<"country">>, Context) ->
+    C = case m_rsc:p(Id, <<"billing_country">>, Context) of
+        undefined -> m_rsc:p(Id, <<"address_country">>, Context);
+        V -> V
+    end,
+    m_l10n:country_name(C, Context);
+p(#{ <<"rsc_id">> := Id }, <<"phone">>, Context) ->
+    case m_rsc:p(Id, <<"phone">>, Context) of
+        undefined -> m_rsc:p(Id, <<"phone_mobile">>, Context);
+        V -> V
+    end;
+p(#{ <<"rsc_id">> := Id }, P, Context) when P =:= <<"email">> ->
+    m_rsc:p(Id, P, Context);
+p(#{ <<"rsc_id">> := Id }, <<"contact name">>, Context) ->
+    MId = case m_edge:objects(Id, hasmaincontact, Context) of
+        [Main|_] -> Main;
+        [] -> Id
+    end,
+    {Name, _} = z_template:render_to_iolist("_name.tpl", [ {id, MId} ], Context),
+    iolist_to_binary(Name);
+p(#{ <<"rsc_id">> := Id }, <<"contact country">>, Context) ->
+    MId = case m_edge:objects(Id, hasmaincontact, Context) of
+        [Main|_] -> Main;
+        [] -> Id
+    end,
+    C = case m_rsc:p(MId, <<"billing_country">>, Context) of
+        undefined -> m_rsc:p(MId, <<"address_country">>, Context);
+        V -> V
+    end,
+    m_l10n:country_name(C, Context);
+p(#{ <<"rsc_id">> := Id }, <<"contact phone">>, Context) ->
+    MId = case m_edge:objects(Id, hasmaincontact, Context) of
+        [Main|_] -> Main;
+        [] -> Id
+    end,
+    case m_rsc:p(MId, <<"phone">>, Context) of
+        undefined -> m_rsc:p(MId, <<"phone_mobile">>, Context);
+        V -> V
+    end;
+p(#{ <<"rsc_id">> := Id }, <<"contact ", P/binary>>, Context) when P =:= <<"email">> ->
+    case m_edge:objects(Id, hasmaincontact, Context) of
+        [Main|_] -> m_rsc:p(Main, P, Context);
+        [] -> m_rsc:p(Id, P, Context)
+    end;
+p(Data, P, _Context) ->
     maps:get(P, Data, undefined).
 
 cols() ->
     [
         <<"user_id">>,
-        <<"user_unique_name">>,
         <<"name">>,
         <<"email">>,
+        <<"phone">>,
+        <<"country">>,
+        <<"contact name">>,
+        <<"contact email">>,
+        <<"contact phone">>,
+        <<"contact country">>,
         <<"psp">>,
         <<"psp_subscription_id">>,
         <<"status">>,
@@ -133,5 +153,3 @@ cols() ->
         <<"invoice_amount_remaining">>,
         <<"invoice_description">>
     ].
-
-

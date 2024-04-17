@@ -9,6 +9,8 @@
     {paysub_psp_done_welcome, [ "payment", "welcome", id ], controller_page,
             [ {template, "paysub_psp_done_welcome.tpl"}, {is_canonical, false} ]},
 
+    {paysub_admin_dashboard, [ "admin", "paysub" ], controller_admin,
+            [ {template, "admin_paysub_dashboard.tpl"} ]},
     {paysub_admin_invoices_overview, [ "admin", "paysub", "invoices" ], controller_admin,
             [ {template, "admin_paysub_invoices_overview.tpl"} ]},
     {paysub_admin_subscriptions_overview, [ "admin", "paysub", "subscriptions" ], controller_admin,
@@ -20,5 +22,5 @@
 
     % Export of data
     {paysub_export_subscriptions, [ "admin", "paysub", "download", "subscriptions" ],
-            controller_export, [ {content_type, csv} ]}
+            controller_export, [ {content_type, xlsx} ]}
 ].

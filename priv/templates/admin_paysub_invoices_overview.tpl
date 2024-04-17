@@ -5,7 +5,7 @@
 {% block content %}
     <div class="admin-header">
         <h2>
-            {_ Payments &amp; Subscriptions &ndash; Invoices _}
+            {_ Invoices _}
             {% if q.qrsc_id %}
                 <a href="{% url paysub_admin_invoices_overview %}" class="btn btn-default btn-xs">{_ Show all _}</a>
             {% endif %}

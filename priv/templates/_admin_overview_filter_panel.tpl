@@ -7,14 +7,26 @@
             <select name="qpaysub_subscription_status" class="form-control col-md-8">
                 <option value=""></option>
                 <optgroup label="{_ Active/inactive _}">
+                    {% if m.paysub.is_unpaid_access %}
+                        <option value="all_access" {% if q.qpaysub_subscription_status == 'all_access' %}selected{% endif %}>
+                            {_ Access subscription _}
+                        </option>
+                        <option value="all_pending" {% if q.qpaysub_subscription_status == 'all_pending' %}selected{% endif %}>
+                            {_ Pending subscription _}
+                        </option>
+                    {% endif %}
+
                     <option value="all_active" {% if q.qpaysub_subscription_status == 'all_active' %}selected{% endif %}>
                         {_ Active subscription _}
                     </option>
                     <option value="all_inactive" {% if q.qpaysub_subscription_status == 'all_inactive' %}selected{% endif %}>
                         {_ Inactive subscription _}
                     </option>
-                    <option value="pastdue_noactive" {% if q.qpaysub_subscription_status == 'pastdue_noactive' %}selected{% endif %}>
+                    <option value="pastdue_noaccess" {% if q.qpaysub_subscription_status == 'pastdue_noactive' %}selected{% endif %}>
                         {_ Past due without active _}
+                    </option>
+                    <option value="incomplete_noaccess" {% if q.qpaysub_subscription_status == 'incomplete_noaccess' %}selected{% endif %}>
+                        {_ Incomplete without other access _}
                     </option>
                 </optgroup>
                 <optgroup label="{_ New active subscriptions _}">

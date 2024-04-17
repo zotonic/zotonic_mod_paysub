@@ -11,14 +11,14 @@
                 <th width="6%">
                     {_ Status _}
                 </th>
-                <th width="20%">
+                <th width="15%">
                     {_ Items _}
                 </th>
                 <th width="15%">
                     {_ Name _}
                 </th>
                 <th width="15%">
-                    {_ Email _}
+                    <span class="glyphicon glyphicon-user"></span> {_ Contact _}
                 </th>
                 <th width="5%">
                     {_ PSP _}
@@ -87,39 +87,54 @@
                         {% endfor %}
                     </ul>
                 </td>
+                <td class="clickable">
+                    {% if sub.rsc_id %}
+                        <a href="{% url admin_edit_rsc id=sub.rsc_id %}">
+                            {% include "_name.tpl" id=sub.rsc_id %}
+                        </a><br>
+                        {% if sub.email|escape|default:sub.rsc_id.billing_email|default:sub.rsc_id.email as email %}
+                            <a href="mailto:{{ email }}">
+                                {{ email }}
+                            </a><br>
+                        {% endif %}
+                        {% if sub.rsc_id.phone|default:sub.rsc_id.phone_mobile as phone %}
+                            <a href="tel:{{ phone }}">
+                                {{ phone }}
+                            </a><br>
+                        {% endif %}
+                        {% if sub.rsc_id.billing_country|default:sub.rsc_id.address_country as country %}
+                            {{ m.l10n.country_name[country] }}<br>
+                        {% endif %}
+                    {% else %}
+                        {{ sub.name|escape }}<br>
+                        {% if sub.email %}
+                            <a href="mailto:{{ sub.email|escape }}">
+                                {{ sub.email|escape }}
+                            </a><br>
+                        {% endif %}
+                        {{ m.l10n.country_name[sub.country] }}<br>
+                    {% endif %}
+                </td>
                 {% with sub.rsc_id.o.hasmaincontact[1] as contact_id %}
                     <td class="clickable">
-                        {% if sub.rsc_id %}
-                            <a href="{% url admin_edit_rsc id=sub.rsc_id %}">
-                                {% include "_name.tpl" id=sub.rsc_id %}
-                            </a>
-                            {% if sub.rsc_id.o.hasmaincontact[1] as contact %}
-                                <br><span class="glyphicon glyphicon-user"></span>
-                                <a href="{% url admin_edit_rsc id=contact_id %}">
-                                    {% include "_name.tpl" id=contact_id %}
-                                </a>
-                            {% endif %}
-                        {% else %}
-                            {{ sub.name|escape }}
-                        {% endif %}
-                    </td>
-                    <td class="clickable">
-                        {% if sub.rsc_id %}
-                            {% if sub.email|escape|default:sub.rsc_id.billing_email|default:sub.rsc_id.email as email %}
+                        {% if contact_id %}
+                            <span class="glyphicon glyphicon-user"></span>
+                            <a href="{% url admin_edit_rsc id=contact_id %}">
+                                {% include "_name.tpl" id=contact_id %}
+                            </a><br>
+                            {% if contact_id.billing_email|default:contact_id.email as email %}
                                 <a href="mailto:{{ email }}">
                                     {{ email }}
                                 </a><br>
                             {% endif %}
-                            {% if sub.rsc_id.o.hasmaincontact[1] as contact %}
-                                <span class="glyphicon glyphicon-user"></span>
-                                <a href="mailto:{{ contact_id.email }}">
-                                    {{ contact_id.email }}
-                                </a>
+                            {% if contact_id.phone|default:contact_id.phone_mobile as phone %}
+                                <a href="tel:{{ phone }}">
+                                    {{ phone }}
+                                </a><br>
                             {% endif %}
-                        {% else %}
-                            <a href="mailto:{{ sub.email|escape }}">
-                                {{ sub.email|escape }}
-                            </a>
+                        {% endif %}
+                        {% if contact_id.billing_country|default:contact_id.address_country as country %}
+                            {{ m.l10n.country_name[country] }}
                         {% endif %}
                     </td>
                 {% endwith %}

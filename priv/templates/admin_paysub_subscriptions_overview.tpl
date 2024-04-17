@@ -55,7 +55,7 @@
                         <select class="form-control" name="qpsp">
                             <option></option>
                             {% for psp in m.paysub.subscriptions.psps %}
-                                <option value="{{ psp|escape }}">{{ psp|escape }}</option>
+                                <option value="{{ psp|escape }}">{{ psp|escape|capfirst }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -65,7 +65,7 @@
                             <option></option>
                             {% for psp, ps in m.paysub.subscriptions.products %}
                                 {% if not q.qpsp or psp == q.qpsp %}
-                                    <optgroup label="{{ psp|capfirst }}">
+                                    <optgroup label="{{ psp|escape|capfirst }}">
                                         {% for p in ps %}
                                             <option value="{{ p.id }}">{{ p.name|escape }}</option>
                                         {% endfor %}
@@ -80,7 +80,7 @@
                             <option></option>
                             {% for psp, ps in m.paysub.subscriptions.prices %}
                                 {% if not q.qpsp or psp == q.qpsp %}
-                                    <optgroup label="{{ psp }}">
+                                    <optgroup label="{{ psp|escape|capfirst }}">
                                         {% for p in ps %}
                                             {% if not q.qproduct_id or q.qproduct_id == p.prod_id %}
                                                 <option value="{{ p.id }}">

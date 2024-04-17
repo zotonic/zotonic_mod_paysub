@@ -139,7 +139,7 @@
                     </td>
                 {% endwith %}
                 <td class="clickable">
-                    {{ sub.psp|escape }}
+                    {{ sub.psp|escape|capfirst }}
                 </td>
             {% endblock %}
         </tr>

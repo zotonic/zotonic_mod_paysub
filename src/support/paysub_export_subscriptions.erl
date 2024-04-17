@@ -86,8 +86,11 @@ p(#{ <<"rsc_id">> := Id }, <<"phone">>, Context) ->
         undefined -> m_rsc:p(Id, <<"phone_mobile">>, Context);
         V -> V
     end;
-p(#{ <<"rsc_id">> := Id }, P, Context) when P =:= <<"email">> ->
-    m_rsc:p(Id, P, Context);
+p(#{ <<"rsc_id">> := Id }, <<"email">>, Context) ->
+    case m_rsc:p(Id, <<"billing_email">>, Context) of
+        undefined -> m_rsc:p(Id, <<"email">>, Context);
+        V -> V
+    end;
 p(#{ <<"rsc_id">> := Id }, <<"contact name">>, Context) ->
     MId = case m_edge:objects(Id, hasmaincontact, Context) of
         [Main|_] -> Main;
@@ -114,10 +117,14 @@ p(#{ <<"rsc_id">> := Id }, <<"contact phone">>, Context) ->
         undefined -> m_rsc:p(MId, <<"phone_mobile">>, Context);
         V -> V
     end;
-p(#{ <<"rsc_id">> := Id }, <<"contact ", P/binary>>, Context) when P =:= <<"email">> ->
-    case m_edge:objects(Id, hasmaincontact, Context) of
-        [Main|_] -> m_rsc:p(Main, P, Context);
-        [] -> m_rsc:p(Id, P, Context)
+p(#{ <<"rsc_id">> := Id }, <<"contact email">>, Context) ->
+    MId = case m_edge:objects(Id, hasmaincontact, Context) of
+        [Main|_] -> Main;
+        [] -> Id
+    end,
+    case m_rsc:p(MId, <<"billing_email">>, Context) of
+        undefined -> m_rsc:p(MId, <<"email">>, Context);
+        V -> V
     end;
 p(Data, P, _Context) ->
     maps:get(P, Data, undefined).

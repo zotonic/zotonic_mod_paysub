@@ -388,12 +388,8 @@ m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
 m_get([ <<"overview_by">>, <<"user_group">> | Rest ], _Msg, Context) ->
     case is_allowed_paysub(Context) of
         true ->
-            case overview_ug(Context) of
-                {ok, L} ->
-                    {ok, {L, Rest}};
-                {error, _} = Error ->
-                    Error
-            end;
+            {ok, L} = overview_ug(Context),
+            {ok, {L, Rest}};
         false ->
             {error, eacces}
     end;
@@ -2456,7 +2452,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
             update_customer_psp(PSP, PspCustId, Context),
             ok;
         0 ->
-            case z_db:q("
+            case z_db:q1("
                 select id
                 from paysub_customer
                 where psp = $1

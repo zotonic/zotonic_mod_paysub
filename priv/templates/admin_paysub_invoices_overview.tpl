@@ -36,27 +36,13 @@
                 <thead>
                     <tr>
                         {% block payment_table_head %}
-                            <th width="10%">
-                                {_ Date _}
-                            </th>
-                            <th width="6%">
-                                {_ Status _}
-                            </th>
-                            <th width="7%" style="text-align: right;">
-                                {_ Amount _}
-                            </th>
-                            <th width="20%">
-                                {_ Description _}
-                            </th>
-                            <th width="15%">
-                                {_ Name _}
-                            </th>
-                            <th width="15%">
-                                {_ Email _}
-                            </th>
-                            <th width="5%">
-                                {_ PSP _}
-                            </th>
+                            <th width="10%">{_ Date _}</th>
+                            <th width="6%">{_ Status _}</th>
+                            <th width="7%" style="text-align: right;">{_ Amount _}</th>
+                            <th width="20%">{_ Description _}</th>
+                            <th width="15%">{_ Name _}</th>
+                            <th width="15%">{_ Email _}</th>
+                            <th width="5%">{_ PSP _}</th>
                         {% endblock %}
                     </tr>
                 </thead>

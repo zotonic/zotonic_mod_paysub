@@ -1157,7 +1157,7 @@ search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, a
                 args = [ Status ]
             }
     end;
-search_query_term(#search_sql_term{}, _Context) ->
+search_query_term(#search_query_term{}, _Context) ->
     undefined.
 
 

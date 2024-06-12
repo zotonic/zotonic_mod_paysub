@@ -1,3 +1,4 @@
+{% if m.paysub.is_allowed_paysub %}
 {% with m.paysub.rsc[id].subscriptions.list as subs %}
 {% with m.paysub.rsc[id].invoices.count as invoice_count %}
 {% with m.paysub.rsc[id].payments.count as payment_count %}
@@ -20,3 +21,4 @@
 {% endwith %}
 {% endwith %}
 {% endwith %}
+{% endif %}

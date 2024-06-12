@@ -158,6 +158,8 @@
     checkout_status/0
 ]).
 
+m_get([ <<"is_allowed_paysub">> | Rest ], _Msg, Context) ->
+    {ok, {is_allowed_paysub(Context), Rest}};
 m_get([ <<"is_subscriber">> ], _Msg, Context) ->
     IsSubscriber = is_subscriber(z_acl:user(Context), Context),
     {ok, {IsSubscriber, []}};

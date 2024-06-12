@@ -137,11 +137,12 @@ Page to show when returned from PSP
                                     <input id="password" type="password" name="password" autocomplete="new-password" class="form-control" required autofocus
                                     {% if m.authentication.password_min_length as min %}minlength="{{ min }}"{% endif %}
                                     {% if m.authentication.password_regex as regex %}pattern="{{ regex|escape }}"{% endif %}>
-                                    {% if m.admin_identity.password_regex %}
-                                        {% validate id="password" type={format pattern=m.admin_identity.password_regex failure_message=_"This password does not meet the security requirements"} type={presence} %}
-                                    {% else %}
-                                        {% validate id="password" type={length minimum=m.authentication.password_min_length} type={presence} %}
-                                    {% endif %}
+                                    {% validate id="password"
+                                                type={acceptable_password
+                                                    message=_"Your new password is too short or not strong enough. Use a: uppercase letter, lowercase letter, number, symbol."
+                                                }
+                                                only_on_blur
+                                    %}
                                 </div>
                                 <div class="form-group">
                                     <button class="btn btn-primary" type="submit">{_ Save and continue _}</button>

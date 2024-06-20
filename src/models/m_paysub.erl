@@ -123,6 +123,8 @@
     update_subscription/3,
     delete_subscription/3,
 
+    sync_customer_rsc_id/2,
+
     update_customer_rsc_id/4,
     update_customer_rsc_id/5,
     update_customer_psp/3,
@@ -2392,6 +2394,25 @@ update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
         [ PSP, PspCustId, RscId ],
         Context),
     update_customer_rsc_id_1(PSP, PspCustId, RscId, Context).
+
+
+%% @doc Sync the rsc_id to the PSP with an async task. This is needed after
+%% the rsc_id has been updated, for example after a merge of subscriptions.
+-spec sync_customer_rsc_id(RscId, Context) -> ok | {error, enoent} when
+    RscId :: undefined | m_rsc:resource_id(),
+    Context :: z:context().
+sync_customer_rsc_id(RscId, Context) ->
+    Rs = z_db:q("
+        select psp, psp_customer_id
+        from paysub_customer
+        where rsc_id = $1",
+        [ RscId ],
+        Context),
+    lists:foreach(
+        fun({PSP, PspCustId}) ->
+            update_customer_psp(PSP, PspCustId, Context)
+        end,
+        Rs).
 
 %% @doc Set the resource id of a customer record, its subscriptions and checkouts.
 %% The rsc_id will be propagated to the PSP with an async task.

@@ -44,6 +44,8 @@
     observe_export_resource_data/2,
     observe_export_resource_encode/2,
 
+    move_subscriptions/3,
+
     init/1,
     manage_schema/2
 ]).
@@ -246,6 +248,14 @@ observe_search_query(#search_query{}, _Context) ->
 
 observe_rsc_merge(#rsc_merge{ winner_id = WinnerId, loser_id = LoserId }, Context) ->
     m_paysub:rsc_merge(WinnerId, LoserId, Context),
+    ok.
+
+%% @doc Move all subscriptions from one resource to another. After the
+%% customers and subscriptions have been moved, the customer details are
+%% synced to the PSP.
+move_subscriptions(FromId, ToId, Context) ->
+    m_paysub:rsc_merge(ToId, FromId, Context),
+    m_paysub:sync_customer_rsc_id(ToId, Context),
     ok.
 
 observe_rsc_pivot_done(#rsc_pivot_done{ id = Id }, Context) ->

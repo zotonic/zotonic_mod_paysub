@@ -1,8 +1,9 @@
 %% @author Marc Worrell <marc@worrell.nl>
-%% @copyright 2022-2023 Marc Worrell
+%% @copyright 2022-2024 Marc Worrell
 %% @doc Subscriptions and payments for members using Stripe and other PSPs
+%% @end
 
-%% Copyright 2022-2023 Marc Worrell
+%% Copyright 2022-2024 Marc Worrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -44,14 +45,14 @@
     observe_export_resource_data/2,
     observe_export_resource_encode/2,
 
+    move_subscriptions/4,
+
     init/1,
     manage_schema/2
 ]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 -include_lib("zotonic_mod_admin/include/admin_menu.hrl").
-
-% -include_lib("kernel/include/logger.hrl").
 
 event(#submit{ message = {product_update, Args} }, Context) ->
     case m_paysub:is_allowed_paysub(Context) of
@@ -169,7 +170,25 @@ event(#submit{ message = {set_subscription_status, Args} }, Context) ->
             z_render:wire(OnSuccess, Context);
         false ->
             z_render:growl(?__("You are not allowed to edit products.", Context), Context)
+    end;
+event(#postback{ message = {move_subscriptions, Args} }, Context) ->
+    {from_id, FromId} = proplists:lookup(from_id, Args),
+    {to_id, ToId} = proplists:lookup(to_id, Args),
+    IsOnlyMainContact = z_convert:to_bool(proplists:get_value(is_only_maincontact, Args)),
+    true = IsOnlyMainContact,
+    case z_acl:rsc_editable(FromId, Context) andalso z_acl:rsc_editable(ToId, Context) of
+        true ->
+            case lists:member(FromId, m_edge:objects(ToId, hasmaincontact, Context)) of
+                true ->
+                    move_subscriptions(FromId, ToId, IsOnlyMainContact, Context),
+                    z_render:wire(proplists:get_value(on_success, Args), Context);
+                false ->
+                    z_render:growl_error(?__("The user is not a main contact of the organization.", Context), Context)
+            end;
+        false ->
+            z_render:growl(?__("You are not allowed to do this.", Context), Context)
     end.
+
 
 %% @doc Modify the user group based on the active subscriptions. If no subscription found
 %% Then the group `ug_inactive_member` is added.
@@ -246,6 +265,14 @@ observe_search_query(#search_query{}, _Context) ->
 
 observe_rsc_merge(#rsc_merge{ winner_id = WinnerId, loser_id = LoserId }, Context) ->
     m_paysub:rsc_merge(WinnerId, LoserId, Context),
+    ok.
+
+%% @doc Move subscriptions from one resource to another. After the
+%% customers and subscriptions have been moved, the customer details are
+%% synced to the PSP.
+move_subscriptions(FromId, ToId, IsOnlyMainContact, Context) ->
+    m_paysub:move_subscriptions(FromId, ToId, IsOnlyMainContact, Context),
+    m_paysub:sync_customer_rsc_id(ToId, Context),
     ok.
 
 observe_rsc_pivot_done(#rsc_pivot_done{ id = Id }, Context) ->

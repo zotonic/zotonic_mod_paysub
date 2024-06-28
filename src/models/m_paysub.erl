@@ -8,7 +8,7 @@
 %% Possible values are: incomplete, incomplete_expired, trialing, active, past_due, canceled, or unpaid.
 %%
 %% For collection_method=charge_automatically a subscription moves into incomplete if the initial payment
-%% attempt fails. A subscription in this state can only have metadata and default_source updated. Once
+%% attempt fails. A subscription in this state can only have metadata and default_payment_method updated. Once
 %% the first invoice is paid, the subscription moves into an active state. If the first invoice is not
 %% paid within 23 hours, the subscription transitions to incomplete_expired. This is a terminal state,
 %% the open invoice will be voided and no further invoices will be generated.

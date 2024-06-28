@@ -140,7 +140,7 @@
 
     rsc_merge/3,
     move_subscriptions/4,
-    has_moveable_org_subs/2,
+    has_moveable_maincontact_subs/2,
 
     install/1,
 
@@ -409,14 +409,14 @@ m_get([ <<"subscriptions">>, <<"products">> | Rest ], _Msg, Context) ->
     {ok, {subscription_products(Context), Rest}};
 m_get([ <<"subscriptions">>, <<"prices">> | Rest ], _Msg, Context) ->
     {ok, {subscription_prices(Context), Rest}};
-m_get([ <<"has_moveable_org_subs">>, RscId | Rest ], _Msg, Context) ->
+m_get([ <<"has_moveable_maincontact_subs">>, RscId | Rest ], _Msg, Context) ->
     case m_rsc:rid(RscId, Context) of
         undefined ->
             {error, enoent};
         Id ->
             case z_acl:rsc_editable(Id, Context) of
                 true ->
-                    {ok, {has_moveable_org_subs(Id, Context), Rest}};
+                    {ok, {has_moveable_maincontact_subs(Id, Context), Rest}};
                 false ->
                     {error, eacces}
             end
@@ -3000,10 +3000,10 @@ move_subscriptions(FromId, ToId, true, Context) ->
 
 %% @doc Check if the resource has "main contact" subscriptions and is connected with
 %% a hasmaincontact edge from another resource.
--spec has_moveable_org_subs(Id, Context) -> boolean() when
+-spec has_moveable_maincontact_subs(Id, Context) -> boolean() when
     Id :: m_rsc:resource_id(),
     Context :: z:context().
-has_moveable_org_subs(Id, Context) ->
+has_moveable_maincontact_subs(Id, Context) ->
     case m_edge:subjects(Id, hasmaincontact, Context) of
         [] ->
             false;

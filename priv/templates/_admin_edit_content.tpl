@@ -14,7 +14,7 @@
 
             {% if id.s.hasmaincontact[1] as org_id %}
                 <p class="pull-right text-right">
-                    {% if m.paysub.has_moveable_org_subs[id] and org_id.is_editable and id.is_editable %}
+                    {% if m.paysub.has_moveable_maincontact_subs[id] and org_id.is_editable and id.is_editable %}
                         <button type="button" class="btn btn-default pull-right" id="move-sub-org" style="margin-bottom: 4px;">
                             {% trans "Move subscriptions to {org}" org=org_id.title %}
                         </button>

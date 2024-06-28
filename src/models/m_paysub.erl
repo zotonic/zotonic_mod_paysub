@@ -420,6 +420,18 @@ m_get([ <<"has_moveable_maincontact_subs">>, RscId | Rest ], _Msg, Context) ->
                 false ->
                     {error, eacces}
             end
+    end;
+m_get([ <<"moveable_maincontact_psps">>, RscId | Rest ], _Msg, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        Id ->
+            case z_acl:rsc_editable(Id, Context) of
+                true ->
+                    {ok, {moveable_maincontact_psps(Id, Context), Rest}};
+                false ->
+                    {error, eacces}
+            end
     end.
 
 -spec subscription_products(Context) -> ByPSP when
@@ -2982,21 +2994,30 @@ rsc_merge(WinnerId, LoserId, Context) ->
 move_subscriptions(FromId, ToId, false, Context) ->
     rsc_merge(ToId, FromId, Context);
 move_subscriptions(FromId, ToId, true, Context) ->
-    z_db:q("
-        update paysub_subscription sub
-        set rsc_id = $1
-        from paysub_subscription_item item
-             join paysub_price price
-                on  item.psp = price.psp
-                and item.psp_price_id = price.psp_price_id
-             join paysub_product prod
-                on prod.psp = price.psp
-                and prod.psp_product_id = price.psp_product_id
-        where sub.rsc_id = $2
-          and item.subscription_id = sub.id
-          and prod.is_use_maincontact = true
-        ", [ ToId, FromId ], Context),
-    ok.
+    % Merge the data for the PSPs the user has a maincontact subscription for.
+    PSPs = moveable_maincontact_psps(FromId, Context),
+    lists:foreach(
+        fun(PSP) ->
+            z_db:q("
+                update paysub_checkout
+                set rsc_id = $1
+                where rsc_id = $2
+                  and psp = $3
+                ", [ ToId, FromId, PSP ], Context),
+            z_db:q("
+                update paysub_subscription
+                set rsc_id = $1
+                where rsc_id = $2
+                  and psp = $3
+                ", [ ToId, FromId, PSP ], Context),
+            z_db:q("
+                update paysub_customer
+                set rsc_id = $1
+                where rsc_id = $2
+                  and psp = $3
+                ", [ ToId, FromId, PSP ], Context)
+        end,
+        PSPs).
 
 %% @doc Check if the resource has "main contact" subscriptions and is connected with
 %% a hasmaincontact edge from another resource.
@@ -3026,6 +3047,34 @@ has_moveable_maincontact_subs(Id, Context) ->
             Count > 0
     end.
 
+%% @doc Return the PSPs for which the resource has "main contact" subscriptions and is connected with
+%% a hasmaincontact edge from another resource.
+-spec moveable_maincontact_psps(Id, Context) -> PSPs when
+    Id :: m_rsc:resource_id(),
+    PSPs :: list(binary()),
+    Context :: z:context().
+moveable_maincontact_psps(Id, Context) ->
+    case m_edge:subjects(Id, hasmaincontact, Context) of
+        [] ->
+            [];
+        _ ->
+            PSPs = z_db:q("
+                select distinct sub.psp
+                from paysub_subscription sub
+                    join paysub_subscription_item item
+                        on item.subscription_id = sub.id
+                    join paysub_price price
+                        on  item.psp = price.psp
+                        and item.psp_price_id = price.psp_price_id
+                    join paysub_product prod
+                        on prod.psp = price.psp
+                        and prod.psp_product_id = price.psp_product_id
+                where sub.rsc_id = $1
+                  and prod.is_use_maincontact = true",
+                [ Id ],
+                Context),
+            [ PSP || {PSP} <- PSPs ]
+    end.
 
 
 -spec install(z:context()) -> ok.

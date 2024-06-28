@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2024-06-28 12:11+0200\n"
+"PO-Revision-Date: 2024-06-28 13:33+0200\n"
 "Last-Translator: Marc Worrell <marc@worrell.nl>\n"
 "Language-Team: \n"
 "Language: de\n"
@@ -169,7 +169,7 @@ msgstr "Abgelaufen"
 msgid "Found <b>{n}</b> subscriptions."
 msgstr "Gefunden <b>{n}</b> abonnements."
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:49
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:53
 msgid "Go to"
 msgstr "Gehe zu"
 
@@ -238,7 +238,7 @@ msgstr "Verwalten von Abonnements und Zahlungen"
 msgid "Modified"
 msgstr "Geändert"
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:34
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:38
 msgid "Move subscriptions"
 msgstr "Abonnements verschieben"
 
@@ -318,17 +318,13 @@ msgstr "Noch nicht erhalten"
 msgid "Only administrators are allowed to see payments"
 msgstr "Nur Administratoren dürfen Zahlungen sehen"
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:30
-msgid ""
-"Only subscriptions for products which are configured to use a main contact "
-"are moved."
-msgstr ""
-"Nur Abonnements für Produkte, die für die Verwendung eines Hauptkontakts "
-"konfiguriert sind, werden verschoben."
-
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:9./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:31
 msgid "Open"
 msgstr "Offen"
+
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:34
+msgid "Other PSPs are unaffected."
+msgstr "Andere PSPs sind davon nicht betroffen."
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:154./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:71./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:77./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_subscription_info.tpl:164./_build/default/lib/zotonic_mod_paysub/priv/templates/_paysub_subscriptions_table.tpl:11./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_invoices_overview.tpl:45./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_payments_overview.tpl:61./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:40./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:54
 msgid "PSP"
@@ -350,7 +346,7 @@ msgstr "Überfällig ohne aktiv"
 msgid "Payment"
 msgstr "Zahlung"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:320
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:319
 msgid "Payment status"
 msgstr "Zahlungsstatus"
 
@@ -362,23 +358,23 @@ msgstr "Zahlungen"
 msgid "Payments &amp; Subscriptions &ndash; Subscriptions"
 msgstr "Zahlungen &amp; Abonnements - Abonnements"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:286
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:285
 msgid "Payments - Dashboard"
 msgstr "Zahlungen - Dashboard"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:292
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:291
 msgid "Payments - Invoices"
 msgstr "Zahlungen - Rechnungen"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:310
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:309
 msgid "Payments - Payments"
 msgstr "Zahlungen - Zahlungen"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:304
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:303
 msgid "Payments - Products"
 msgstr "Zahlungen - Produkte"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:298
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:297
 msgid "Payments - Subscriptions"
 msgstr "Zahlungen - Abonnements"
 
@@ -546,13 +542,17 @@ msgstr "GESAMT"
 msgid "Thank you!"
 msgstr "Vielen Dank!"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:186
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:185
 msgid "The user is not a main contact of the organization."
 msgstr "Der Benutzer ist kein Hauptansprechpartner der Organisation."
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:32
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:36
 msgid "This cannot be undone."
 msgstr "Dies kann nicht rückgängig gemacht werden."
+
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:30
+msgid "This will move all subscriptions for the following PSPs:"
+msgstr "Dadurch werden alle Abonnements für die folgenden PSPs verschoben:"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:58./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_dashboard.tpl:38
 msgid "Trialing"
@@ -589,15 +589,15 @@ msgstr "Unbezahlt"
 msgid "User group"
 msgstr "Benutzergruppe"
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:57
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:61
 msgid "View Payments"
 msgstr "Zahlungen ansehen"
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:56
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:60
 msgid "View invoices"
 msgstr "Rechnungen anzeigen"
 
-#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:55
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:59
 msgid "View subscriptions"
 msgstr "Abonnements ansehen"
 
@@ -609,7 +609,7 @@ msgstr "Willkommen"
 msgid "Y-m-d"
 msgstr "j M Y"
 
-#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:189
+#: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:188
 msgid "You are not allowed to do this."
 msgstr "Hierzu haben Sie keine Berechtigung"
 
@@ -656,6 +656,13 @@ msgstr "Abonnements"
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_invoice_info.tpl:161./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_payment_info.tpl:78./_build/default/lib/zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:84./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:26./_build/default/lib/zotonic_mod_paysub/priv/templates/psp/_subscription_link.stripe.tpl:4
 msgid "view at {psp}"
 msgstr "blick auf {psp}"
+
+#~ msgid ""
+#~ "Only subscriptions for products which are configured to use a main "
+#~ "contact are moved."
+#~ msgstr ""
+#~ "Nur Abonnements für Produkte, die für die Verwendung eines Hauptkontakts "
+#~ "konfiguriert sind, werden verschoben."
 
 #, fuzzy
 #~ msgid "Payments &amp; Subscriptions &ndash; Invoices"

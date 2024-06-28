@@ -175,7 +175,6 @@ event(#postback{ message = {move_subscriptions, Args} }, Context) ->
     {from_id, FromId} = proplists:lookup(from_id, Args),
     {to_id, ToId} = proplists:lookup(to_id, Args),
     IsOnlyMainContact = z_convert:to_bool(proplists:get_value(is_only_maincontact, Args)),
-    true = IsOnlyMainContact,
     case z_acl:rsc_editable(FromId, Context) andalso z_acl:rsc_editable(ToId, Context) of
         true ->
             case lists:member(FromId, m_edge:objects(ToId, hasmaincontact, Context)) of

@@ -235,7 +235,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:49
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:53
 msgid ""
 "Go to"
 msgstr ""
@@ -332,7 +332,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:34
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:38
 msgid ""
 "Move subscriptions"
 msgstr ""
@@ -452,16 +452,15 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:30
-msgid ""
-"Only subscriptions for products which are configured to use a main "
-"contact are moved."
-msgstr ""
-""
-
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:9./_build/default/lib/zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl:31
 msgid ""
 "Open"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:34
+msgid ""
+"Other PSPs are unaffected."
 msgstr ""
 ""
 
@@ -495,7 +494,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:320
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:319
 msgid ""
 "Payment status"
 msgstr ""
@@ -513,31 +512,31 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:286
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:285
 msgid ""
 "Payments - Dashboard"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:292
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:291
 msgid ""
 "Payments - Invoices"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:310
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:309
 msgid ""
 "Payments - Payments"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:304
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:303
 msgid ""
 "Payments - Products"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:298
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:297
 msgid ""
 "Payments - Subscriptions"
 msgstr ""
@@ -778,15 +777,21 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:186
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:185
 msgid ""
 "The user is not a main contact of the organization."
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:32
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:36
 msgid ""
 "This cannot be undone."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:30
+msgid ""
+"This will move all subscriptions for the following PSPs:"
 msgstr ""
 ""
 
@@ -838,19 +843,19 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:57
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:61
 msgid ""
 "View Payments"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:56
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:60
 msgid ""
 "View invoices"
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:55
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content.tpl:59
 msgid ""
 "View subscriptions"
 msgstr ""
@@ -868,7 +873,7 @@ msgid ""
 msgstr ""
 ""
 
-#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:189
+#: ./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:188
 msgid ""
 "You are not allowed to do this."
 msgstr ""

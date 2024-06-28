@@ -27,7 +27,11 @@
                                         org_id.title,
                                         "</b>?",
                                         "<br><br>",
-                                        _"Only subscriptions for products which are configured to use a main contact are moved.",
+                                        _"This will move all subscriptions for the following PSPs:",
+                                        " <b>",
+                                        m.paysub.moveable_maincontact_psps[id]|join:", ",
+                                        "</b><br><br>",
+                                        _"Other PSPs are unaffected.",
                                         "<br><br>",
                                         _"This cannot be undone."
                                     ]

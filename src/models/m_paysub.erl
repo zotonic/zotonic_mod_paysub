@@ -139,6 +139,8 @@
     delete_invoice/3,
 
     rsc_merge/3,
+    move_subscriptions/4,
+    has_moveable_org_subs/2,
 
     install/1,
 
@@ -406,7 +408,19 @@ m_get([ <<"subscriptions">>, <<"psps">> | Rest ], _Msg, Context) ->
 m_get([ <<"subscriptions">>, <<"products">> | Rest ], _Msg, Context) ->
     {ok, {subscription_products(Context), Rest}};
 m_get([ <<"subscriptions">>, <<"prices">> | Rest ], _Msg, Context) ->
-    {ok, {subscription_prices(Context), Rest}}.
+    {ok, {subscription_prices(Context), Rest}};
+m_get([ <<"has_moveable_org_subs">>, RscId | Rest ], _Msg, Context) ->
+    case m_rsc:rid(RscId, Context) of
+        undefined ->
+            {error, enoent};
+        Id ->
+            case z_acl:rsc_editable(Id, Context) of
+                true ->
+                    {ok, {has_moveable_org_subs(Id, Context), Rest}};
+                false ->
+                    {error, eacces}
+            end
+    end.
 
 -spec subscription_products(Context) -> ByPSP when
     Context :: z:context(),
@@ -2957,6 +2971,61 @@ rsc_merge(WinnerId, LoserId, Context) ->
         where rsc_id = $2
         ", [ WinnerId, LoserId ], Context),
     ok.
+
+
+%% @doc Merge subscriptions from one resource to another, only for .
+-spec move_subscriptions(FromId, ToId, IsOnlyMainContact, Context) -> ok when
+    FromId :: m_rsc:resource_id(),
+    ToId :: m_rsc:resource_id(),
+    IsOnlyMainContact :: boolean(),
+    Context :: z:context().
+move_subscriptions(FromId, ToId, false, Context) ->
+    rsc_merge(ToId, FromId, Context);
+move_subscriptions(FromId, ToId, true, Context) ->
+    z_db:q("
+        update paysub_subscription sub
+        set rsc_id = $1
+        from paysub_subscription_item item
+             join paysub_price price
+                on  item.psp = price.psp
+                and item.psp_price_id = price.psp_price_id
+             join paysub_product prod
+                on prod.psp = price.psp
+                and prod.psp_product_id = price.psp_product_id
+        where sub.rsc_id = $2
+          and item.subscription_id = sub.id
+          and prod.is_use_maincontact = true
+        ", [ ToId, FromId ], Context),
+    ok.
+
+%% @doc Check if the resource has "main contact" subscriptions and is connected with
+%% a hasmaincontact edge from another resource.
+-spec has_moveable_org_subs(Id, Context) -> boolean() when
+    Id :: m_rsc:resource_id(),
+    Context :: z:context().
+has_moveable_org_subs(Id, Context) ->
+    case m_edge:subjects(Id, hasmaincontact, Context) of
+        [] ->
+            false;
+        _ ->
+            Count = z_db:q1("
+                select count(*)
+                from paysub_subscription sub
+                    join paysub_subscription_item item
+                        on item.subscription_id = sub.id
+                    join paysub_price price
+                        on  item.psp = price.psp
+                        and item.psp_price_id = price.psp_price_id
+                    join paysub_product prod
+                        on prod.psp = price.psp
+                        and prod.psp_product_id = price.psp_product_id
+                where sub.rsc_id = $1
+                  and prod.is_use_maincontact = true",
+                [ Id ],
+                Context),
+            Count > 0
+    end.
+
 
 
 -spec install(z:context()) -> ok.

@@ -23,7 +23,7 @@
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication ]).
--mod_schema(8).
+-mod_schema(12).
 
 -author("Marc Worrell <marc@worrell.nl>").
 
@@ -86,6 +86,41 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
         _ ->
             z_render:growl(?__("Sorry, can't redirect to the customer portal.", Context), Context)
     end;
+event(#postback{ message = {customer_create, Args} }, Context) ->
+    {psp, PSP} = proplists:lookup(psp, Args),
+    {id, Id} = proplists:lookup(id, Args),
+    case m_paysub:is_allowed_paysub(Context) andalso z_acl:rsc_editable(Id, Context) of
+        true ->
+            case z_convert:to_binary(PSP) of
+                <<"stripe">> ->
+                    case paysub_stripe:ensure_stripe_customer(Id, Context) of
+                        {ok, _StripeId} ->
+                            z_render:wire({reload, []}, Context);
+                        {error, _} ->
+                            z_render:growl(?__("Sorry, something went wrong.", Context), Context)
+                    end;
+                _ ->
+                    z_render:growl(?__("Sorry, can't create a customer for this PSP.", Context), Context)
+            end;
+        false ->
+            z_render:growl(?__("Sorry, you are not allowed to create a customer for this PSP.", Context), Context)
+    end;
+event(#postback{ message = {customer_update, Args} }, Context) ->
+    {psp, PSP} = proplists:lookup(psp, Args),
+    {id, Id} = proplists:lookup(id, Args),
+    case m_paysub:is_allowed_paysub(Context) andalso z_acl:rsc_editable(Id, Context) of
+        true ->
+            RscId = m_rsc:rid(Id, Context),
+            case m_paysub:get_customer(PSP, RscId, Context) of
+                {ok, _} ->
+                    m_paysub:sync_billing_to_psp(Id, Context),
+                    z_render:growl(?__("Data will be sent to Stripe.", Context), Context);
+                {error, _} ->
+                    z_render:growl(?__("Sorry, can't find the customer for this PSP.", Context), Context)
+            end;
+        false ->
+            z_render:growl(?__("Sorry, you are not allowed to update customer for this PSP.", Context), Context)
+    end;
 event(#submit{ message = {set_usernamepw, Args}, form = Form }, Context) ->
     {checkout_nr, CheckoutNr} = proplists:lookup(checkout_nr, Args),
     {user_id, UserId} = proplists:lookup(user_id, Args),
@@ -133,6 +168,8 @@ event(#submit{ message = {set_usernamepw, Args}, form = Form }, Context) ->
                             z_render:wire({alert, [{text, ?__("Sorry, something goes wrong, try again later.", Context)}]}, Context)
                     end;
                 {error, eexist} ->
+                    z_render:wire({show, [{target, "err-username"}]}, Context);
+                {error, eacces} ->
                     z_render:wire({show, [{target, "err-username"}]}, Context);
                 {error, _} ->
                     z_render:wire({alert, [{text, ?__("Sorry, something goes wrong, try again later.", Context)}]}, Context)
@@ -190,7 +227,12 @@ event(#postback{ message = {move_subscriptions, Args} }, Context) ->
 
 
 %% @doc Modify the user group based on the active subscriptions. If no subscription found
-%% Then the group `ug_inactive_member` is added.
+%% Then the group `ug_inactive_member` is added. Called by mod_acl_user_groups when a new
+%% user context is initialized.
+-spec observe_acl_user_groups_modify(#acl_user_groups_modify{}, UGs, Context) -> NewUGs when
+    UGs :: list( m_rsc:resource_id() ),
+    Context :: z:context(),
+    NewUGs :: list( m_rsc:resource_id() ).
 observe_acl_user_groups_modify(#acl_user_groups_modify{ id = undefined }, Groups, _Context) ->
     Groups;
 observe_acl_user_groups_modify(#acl_user_groups_modify{ id = UserId }, Groups, Context) ->

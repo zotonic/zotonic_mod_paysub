@@ -2,7 +2,14 @@
 {% with m.paysub.rsc[id].subscriptions.list as subs %}
 {% with m.paysub.rsc[id].invoices.count as invoice_count %}
 {% with m.paysub.rsc[id].payments.count as payment_count %}
-{% if subs or invoice_count or payment_count %}
+
+{% if  subs
+    or invoice_count
+    or payment_count
+    or id.is_a.person
+    or id.is_a.institute
+    or id.is_a.institution
+%}
     <div id="rsc-paysub-subs" class="widget do_adminwidget" data-adminwidget="minifiedOnInit:false, minifier:true">
         <div class="widget-header">
             {_ Payments &amp; Subscriptions &ndash; Subscriptions _}
@@ -59,10 +66,41 @@
                 <a class="btn btn-default" href="{% url paysub_admin_subscriptions_overview qrsc_id=id %}">{_ View subscriptions _}</a>
                 <a class="btn btn-default" href="{% url paysub_admin_invoices_overview qrsc_id=id %}">{_ View invoices _}</a>
                 <a class="btn btn-default" href="{% url paysub_admin_payments_overview qrsc_id=id %}">{_ View Payments _}</a>
+
+                {% if not m.paysub.is_customer.stripe[id] %}
+                    <button class="btn btn-default" type="button" id="create-stripe-cust">
+                        {_ Create Stripe customer _}
+                    </button>
+                    {% wire id="create-stripe-cust"
+                            action={confirm
+                                text=_"This will send the personal data to Stripe and create a Stripe customer."
+                                ok=_"Create Stripe customer"
+                                postback={customer_create psp="stripe" id=id}
+                                delegate=`mod_paysub`
+                            }
+                    %}
+                {% else %}
+                    <button class="btn btn-default" type="button" id="sync-stripe-cust">
+                        {_ Update Stripe customer _}
+                    </button>
+                    {% wire id="sync-stripe-cust"
+                            action={confirm
+                                text=_"This will send the personal data to Stripe and update the Stripe customer."
+                                ok=_"Update Stripe customer"
+                                postback={customer_update psp="stripe" id=id}
+                                delegate=`mod_paysub`
+                            }
+                    %}
+
+                    <a target="_blank" class="btn btn-default" href="{{ m.paysub.customer_url.stripe[id] }}">
+                        {_ View at Stripe _}
+                    </a>
+                {% endif %}
             </p>
         </div>
     </div>
 {% endif %}
+
 {% endwith %}
 {% endwith %}
 {% endwith %}

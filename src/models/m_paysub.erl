@@ -174,6 +174,8 @@ m_get([ <<"is_customer_portal">>, <<"stripe">> ], _Msg, Context) ->
     {ok, {paysub_stripe:is_customer_portal(z_acl:user(Context), Context), []}};
 m_get([ <<"is_customer_portal">>, <<"stripe">>, Id | Rest ], _Msg, Context) ->
     {ok, {paysub_stripe:is_customer_portal(Id, Context), Rest}};
+m_get([ <<"is_customer">>, <<"stripe">>, Id | Rest ], _Msg, Context) ->
+    {ok, {paysub_stripe:is_customer(Id, Context), Rest}};
 m_get([ <<"is_unpaid_access">> | Rest ], _Msg, Context) ->
     {ok, {m_config:get_boolean(mod_paysub, is_unpaid_access, Context), Rest}};
 m_get([ <<"customer_portal_session_url">>, <<"stripe">> ], _Msg, Context) ->
@@ -189,6 +191,27 @@ m_get([ <<"customer_portal_session_url">>, <<"stripe">>, Id | Rest ], _Msg, Cont
             {ok, {Url, Rest}};
         {error, _} = Error ->
             Error
+    end;
+m_get([ <<"customer_url">>, <<"stripe">>, Id | Rest ], _Msg, Context) ->
+    case m_rsc:rid(Id, Context) of
+        undefined ->
+            {error, enoent};
+        RId ->
+            case z_acl:rsc_visible(RId, Context) andalso is_allowed_paysub(Context) of
+                true ->
+                    case m_paysub:get_customer(stripe, RId, Context) of
+                        {ok, #{ <<"psp_customer_id">> := PspCustId }} when is_binary(PspCustId) ->
+                            Url = iolist_to_binary([
+                                    <<"https://dashboard.stripe.com/customers/">>,
+                                    z_url:percent_encode(PspCustId)
+                                ]),
+                            {ok, {Url, Rest}};
+                        {error, _} = Error ->
+                            Error
+                    end;
+                false ->
+                    {error, eacces}
+            end
     end;
 m_get([ <<"checkout">>, <<"status">>, CheckoutNr | Rest ], _Msg, Context) ->
     case checkout_status(CheckoutNr, Context) of
@@ -385,7 +408,8 @@ m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
                     <<"is_recurring">>,
                     <<"recurring_period">>,
                     <<"is_use_maincontact">>,
-                    <<"product_name">>
+                    <<"product_name">>,
+                    <<"billing_scheme">>
                 ], Price),
             {ok, {Info, Rest}};
         {error, _} = Error ->
@@ -2316,7 +2340,7 @@ get_price(PSP, PriceIdOrName, Context) when is_binary(PriceIdOrName) ->
             left join paysub_product prod
             on prod.psp = price.psp
             and prod.psp_product_id = price.psp_product_id
-        where (price.psp_price_id = $1 or price.name = $1)
+        where (price.psp_price_id = $1 or price.name = $1 or price.key = $1)
           and price.psp = $2
         ", [ PriceIdOrName, PSP ], Context).
 
@@ -2665,12 +2689,12 @@ provision_subscription(PSP, PspSubId, CheckoutNr, Context) ->
         end,
         Context).
 
--spec sync_subscription(PSP, Sub, PriceIds, Context) -> ok | {error, term()} when
+-spec sync_subscription(PSP, Sub, Prices, Context) -> ok | {error, term()} when
     PSP :: atom() | binary(),
     Sub :: map(),
-    PriceIds :: list( binary() ),
+    Prices :: list(map()),
     Context :: z:context().
-sync_subscription(PSP,  #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Context) ->
+sync_subscription(PSP,  #{ psp_subscription_id := PspSubId } = Sub, Prices, Context) ->
     PspCustId = maps:get(psp_customer_id, Sub, undefined),
     ?LOG_INFO(#{
         in => zotonic_mod_paysub,
@@ -2681,7 +2705,7 @@ sync_subscription(PSP,  #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Co
     }),
     case z_db:transaction(
         fun(Ctx) ->
-            sync_subscription_trans(PSP, Sub, PriceIds, Ctx)
+            sync_subscription_trans(PSP, Sub, Prices, Ctx)
         end,
         Context)
     of
@@ -2792,38 +2816,61 @@ notify_subscription(SubId, IsRetry, Context) ->
             Error
     end.
 
-sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, PriceIds, Context) ->
+sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, NewPrices, Context) ->
     {ok, SubId} = update_subscription_1(PSP, PspSubId, Sub, Context),
-    Current = z_db:q("
-        select psp_price_id
+    CurrentPrices = z_db:qmap("
+        select psp_price_id, psp_item_id, quantity
         from paysub_subscription_item
         where subscription_id = $1",
         [ SubId ],
+        [ {keys, atom} ],
         Context),
-    Current1 = [ P || {P} <- Current ],
-    New = PriceIds -- Current1,
-    Del = Current1 -- PriceIds,
+    NewIds = [ P || #{ psp_item_id := P } <- NewPrices ],
+    CurrentIds = [ P || #{ psp_item_id := P } <- CurrentPrices ],
+    New = NewIds -- CurrentIds,
+    Del = CurrentIds -- NewIds,
     lists:foreach(
-        fun(PriceId) ->
+        fun(ItemId) ->
             z_db:q("
                 delete from paysub_subscription_item
                 where subscription_id = $1
-                  and psp_price_id = $3",
-                [ SubId, PriceId ],
+                  and psp_item_id = $3",
+                [ SubId, ItemId ],
                 Context)
         end,
         Del),
     lists:foreach(
-        fun(PriceId) ->
+        fun(#{ psp_item_id := ItemId, psp_price_id := PriceId } = Price) ->
+            case lists:member(ItemId, New) of
+                true ->
+                    Quantity = maps:get(quantity, Price, 1),
+                    z_db:q("
+                        insert into paysub_subscription_item
+                            (subscription_id, psp, psp_price_id, psp_item_id, quantity)
+                        values
+                            ($1, $2, $3, $4, $5)",
+                        [ SubId, PSP, PriceId, ItemId, Quantity ],
+                        Context);
+                false ->
+                    ok
+            end
+        end,
+        NewPrices),
+    lists:foreach(
+        fun(#{ psp_item_id := ItemId, psp_price_id := PriceId } = Price) ->
+            NewQuantity = maps:get(quantity, Price, 1),
             z_db:q("
-                insert into paysub_subscription_item
-                    (subscription_id, psp, psp_price_id)
-                values
-                    ($1, $2, $3)",
-                [ SubId, PSP, PriceId ],
+                update paysub_subscription_item
+                set quantity = $5
+                where subscription_id = $1
+                  and psp = $2,
+                  and psp_price_id = $3
+                  and psp_item_id = $4
+                  and quantity <> $5",
+                [ SubId, PSP, PriceId, ItemId, NewQuantity ],
                 Context)
         end,
-        New),
+        NewPrices),
     {ok, SubId}.
 
 update_subscription_1(PSP, PspSubId, Sub, Context) ->
@@ -3215,6 +3262,52 @@ install(Context) ->
                     ok;
                 true ->
                     ok
+            end,
+            case z_db:column_exists(paysub_price, billing_scheme, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_price
+                            add column billing_scheme character varying(32) not null default 'per_unit',
+                            alter column amount drop not null
+                        ", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
+            end,
+            case z_db:column_exists(paysub_price, key, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_price
+                            add column key character varying(128) not null default ''
+                        ", Context),
+                    [] = z_db:q("CREATE INDEX paysub_price_key_key ON paysub_price (key)", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
+            end,
+            case z_db:column_exists(paysub_subscription_item, quantity, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_subscription_item
+                            add column quantity integer
+                        ", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
+            end,
+            case z_db:column_exists(paysub_subscription_item, psp_item_id, Context) of
+                false ->
+                    [] = z_db:q("
+                            alter table paysub_subscription_item
+                            add column psp_item_id character varying(128) not null default ''
+                        ", Context),
+                    z_db:flush(Context),
+                    ok;
+                true ->
+                    ok
             end
     end.
 
@@ -3280,12 +3373,14 @@ install_tables(Context) ->
             id serial not null,
             is_active boolean not null default true,
             name character varying(128) not null,
+            key character varying(128) not null default '',
             psp character varying(32) not null,
             psp_price_id character varying(128) not null,
             psp_product_id character varying(128) not null,
             props_json jsonb,
             currency character varying(16) not null default 'EUR'::character varying,
-            amount integer not null default 0,
+            amount integer default,
+            billing_scheme character varying(32) not null default 'per_unit',
             is_recurring boolean not null default false,
             recurring_period character varying(16),
             created timestamp with time zone NOT NULL DEFAULT now(),
@@ -3296,6 +3391,7 @@ install_tables(Context) ->
         )", Context),
 
     [] = z_db:q("CREATE INDEX paysub_price_name_key ON paysub_price (name)", Context),
+    [] = z_db:q("CREATE INDEX paysub_price_key_key ON paysub_price (key)", Context),
     [] = z_db:q("CREATE INDEX paysub_price_psp_product_key ON paysub_price (psp, psp_product_id)", Context),
     [] = z_db:q("CREATE INDEX paysub_price_created_key ON paysub_price (created)", Context),
     [] = z_db:q("CREATE INDEX paysub_price_modified_key ON paysub_price (modified)", Context),
@@ -3338,7 +3434,9 @@ install_tables(Context) ->
         create table paysub_subscription_item (
             subscription_id int not null,
             psp character varying(32) not null,
+            psp_item_id character varying(128) not null default '',
             psp_price_id character varying(128) not null,
+            quantity integer,
             created timestamp with time zone NOT NULL DEFAULT now(),
 
             constraint paysub_item_pkey primary key (subscription_id, psp, psp_price_id),

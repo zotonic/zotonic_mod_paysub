@@ -5,7 +5,7 @@
 {% elseif psp == 'stripe' %}
     <a id="{{ #sub }}" class="btn btn-primary" href="#subscribe">{{ title|default:_"Subscribe" }}</a>
     {% wire id=#sub
-            postback={checkout price=price}
+            postback={checkout price=price quantity=quantity currency=currency}
             delegate=`paysub_stripe`
     %}
 {% else %}

@@ -85,9 +85,10 @@
                                             {% if not q.qproduct_id or q.qproduct_id == p.prod_id %}
                                                 <option value="{{ p.id }}">
                                                     {{ p.prod_name|escape }}
-                                                    {% if p.name != p.prod_name %}
+                                                    {% if p.name and p.name != p.prod_name %}
                                                         ({{ p.name|escape }})
                                                     {% endif %}
+                                                    &ndash; {{ p.currency|replace:"EUR":"€"|escape }}&nbsp;{{ p.amount|format_price }}
                                                 </option>
                                             {% endif %}
                                         {% endfor %}

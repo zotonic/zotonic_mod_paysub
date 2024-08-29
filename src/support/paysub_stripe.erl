@@ -651,7 +651,7 @@ update_billing_address(CustId, Context) ->
                     Customer = #{
                         <<"address">> => Address,
                         <<"email">> => Email,
-                        <<"phone">> => m_paysub:billing_phone(Id, Context),
+                        <<"phone">> => truncate(m_paysub:billing_phone(Id, Context), 19),
                         <<"name">> => m_paysub:billing_name(Id, Context),
                         <<"preferred_locales">> => [ bin(pref_language(Id, ContextSudo)) ],
                         <<"metadata">> => #{

@@ -43,7 +43,7 @@ add_invoice(Sub, Context) ->
         <<"rsc_id">> := UserId
     } = Sub,
     Inv = fetch_last_invoice_paid(UserId, Context),
-    Sub1 = maps:merge(Sub, Inv),
+    Sub1 = maps:merge(Inv, Sub),
     Sub1#{
         <<"subscription_year">> => fetch_first_subscription_year(UserId, Context)
     }.
@@ -175,6 +175,10 @@ p(#{ <<"rsc_id">> := Id }, <<"pref_language">>, Context) ->
     m_rsc:p(MId, <<"pref_language">>, Context);
 p(#{ <<"price_amount">> := Amount, <<"price_currency">> := _Currency }, <<"price_amount">>, _Context) when is_integer(Amount) ->
     Amount / 100;
+p(#{ <<"items">> := [ #{ <<"user_group_id">> := UserGroupId } ] }, <<"user_group">>, Context) ->
+    m_rsc:p_no_acl(UserGroupId, <<"title">>, Context);
+p(#{}, <<"user_group">>, _Context) ->
+    <<"-">>;
 p(Data, P, _Context) ->
     maps:get(P, Data, undefined).
 
@@ -199,6 +203,7 @@ cols() ->
         <<"psp_subscription_id">>,
         <<"status">>,
         <<"product_name">>,
+        <<"user_group">>,
         <<"price_name">>,
         <<"price_currency">>,
         <<"price_amount">>,

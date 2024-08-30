@@ -1686,20 +1686,19 @@ user_subscriptions(UserId0, Context) ->
 
 subscription_add_prices(Subs, Context) ->
     lists:map(
-        fun(#{ <<"id">> := Id, <<"psp">> := PSP } = Sub) ->
+        fun(#{ <<"id">> := Id } = Sub) ->
             {ok, Prices} = z_db:qmap_props("
                 select *
-                from paysub_price price
-                    left join paysub_subscription_item item
+                from paysub_subscription_item item
+                    left join paysub_price price
                         on price.psp_price_id = item.psp_price_id
                         and price.psp = item.psp
                     left join paysub_product prod
                         on prod.psp = price.psp
                         and prod.psp_product_id = price.psp_product_id
-                where item.subscription_id = $2
-                  and price.psp = $1
+                where item.subscription_id = $1
                 ",
-                [ PSP, Id ],
+                [ Id ],
                 Context),
             Sub#{
                 <<"items">> => Prices

@@ -98,12 +98,54 @@
                         </select>
                     </div>
                 </div>
+                <br>
+                <details {% if q.qcountry %}open{% endif %}>
+                    <summary>{_ More options _}</summary>
+                    <div class="row">
+                        <div class="col-sm-2 col-xs-6">
+                            <label class="control-label">{_ Country _}</label>
+                            <select class="form-control" name="qcountry">
+                                <option></option>
+                                {% for country in m.paysub_search.list.countries %}
+                                    <option value="{{ country.code }}">{{ country.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-sm-2 col-xs-6">
+                            <label class="control-label">{_ City _}</label>
+                            {% if q.qcountry %}
+                                <select class="form-control" name="qcity">
+                                    <option></option>
+                                    {% for city in m.paysub_search.list.cities[q.qcountry] %}
+                                        <option value="{{ city }}">{{ city|capfirst }}</option>
+                                    {% endfor %}
+                                </select>
+                            {% else %}
+                                <p class="text-muted">{_ Add filter on country. _}</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-sm-2 col-xs-6">
+                            <label class="control-label">{_ Postcode prefix _}</label>
+                            {% if q.qcountry %}
+                                <input type="text" class="form-control" name="qpostcode" value="" autocomplete="off">
+                            {% else %}
+                                <p class="text-muted">{_ Add filter on country. _}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </details>
             </form>
 
             {% javascript %}
                 $('#filter-form').on('input', function(e) {
-                    $(this).submit();
-                    try { $('body').mask(); } catch (_) {};
+                    switch ($(e.target).attr('type')) {
+                        case 'text':
+                            break;
+                        default:
+                            $(this).submit();
+                            try { $('body').mask(); } catch (_) {};
+                            break;
+                    }
                 })
             {% endjavascript %}
         </div>
@@ -115,6 +157,9 @@
                     product_id=q.qproduct_id
                     status=q.qstatus
                     user_group_id=q.quser_group_id
+                    country=q.qcountry
+                    city=q.qcountry|if:q.qcity:undefined
+                    postcode=q.qcountry|if:q.qpostcode:undefined
                     psp=q.qpsp
                     page=q.page
                     pagelen=20

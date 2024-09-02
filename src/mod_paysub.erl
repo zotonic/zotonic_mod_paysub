@@ -256,15 +256,15 @@ main_contact_ugs(Ids, Context) ->
             Ids)).
 
 observe_search_query_term(#search_query_term{} = Term, Context) ->
-    m_paysub:search_query_term(Term, Context).
+    m_paysub_search:search_query_term(Term, Context).
 
 observe_search_query(#search_query{ search={paysub_invoices, Args}, offsetlimit=OffsetLimit }, Context) ->
     case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{
-                rsc_id => proplists:get_value(rsc_id, Args)
+                <<"rsc_id">> => proplists:get_value(rsc_id, Args)
             },
-            m_paysub:search_query(invoices, Query, OffsetLimit, Context);
+            m_paysub_search:search_query(invoices, Query, OffsetLimit, Context);
         false ->
             []
     end;
@@ -277,9 +277,12 @@ observe_search_query(#search_query{ search={paysub_subscriptions, Args}, offsetl
                 <<"product_id">> => proplists:get_value(product_id, Args),
                 <<"status">> => proplists:get_value(status, Args),
                 <<"user_group_id">> => proplists:get_value(user_group_id, Args),
-                <<"psp">> => proplists:get_value(psp, Args)
+                <<"psp">> => proplists:get_value(psp, Args),
+                <<"country">> => proplists:get_value(country, Args),
+                <<"city">> => proplists:get_value(city, Args),
+                <<"postcode">> => proplists:get_value(postcode, Args)
             },
-            m_paysub:search_query(subscriptions, Query, OffsetLimit, Context);
+            m_paysub_search:search_query(subscriptions, Query, OffsetLimit, Context);
         false ->
             []
     end;
@@ -287,7 +290,7 @@ observe_search_query(#search_query{ search={paysub_products, _Args}, offsetlimit
     case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{},
-            m_paysub:search_query(products, Query, OffsetLimit, Context);
+            m_paysub_search:search_query(products, Query, OffsetLimit, Context);
         false ->
             []
     end;
@@ -295,9 +298,9 @@ observe_search_query(#search_query{ search={paysub_payments, Args}, offsetlimit=
     case m_paysub:is_allowed_paysub(Context) of
         true ->
             Query = #{
-                rsc_id => proplists:get_value(rsc_id, Args)
+                <<"rsc_id">> => proplists:get_value(rsc_id, Args)
             },
-            m_paysub:search_query(payments, Query, OffsetLimit, Context);
+            m_paysub_search:search_query(payments, Query, OffsetLimit, Context);
         false ->
             []
     end;

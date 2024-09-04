@@ -2299,7 +2299,7 @@ notify_subscription(SubId, IsRetry, Context) ->
 
 sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, NewPrices, Context) ->
     {ok, SubId} = update_subscription_1(PSP, PspSubId, Sub, Context),
-    CurrentPrices = z_db:qmap("
+    {ok, CurrentPrices} = z_db:qmap("
         select psp_price_id, psp_item_id, quantity
         from paysub_subscription_item
         where subscription_id = $1",
@@ -2344,7 +2344,7 @@ sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, NewPric
                 update paysub_subscription_item
                 set quantity = $5
                 where subscription_id = $1
-                  and psp = $2,
+                  and psp = $2
                   and psp_price_id = $3
                   and psp_item_id = $4
                   and quantity <> $5",

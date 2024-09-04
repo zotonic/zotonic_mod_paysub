@@ -83,7 +83,11 @@
                                                 </small>
                                             </td>
                                             <td width="40%" class="clickable">
-                                                {{ price.currency|replace:"EUR":"€"|escape }}&nbsp;{{ price.amount|format_price }}<br>
+                                                {{ price.currency|replace:"EUR":"€"|escape }}&nbsp;{{ price.amount|format_price }}
+                                                {% if price.billing_scheme == 'tiered' %}
+                                                    <span class="text-muted">{_ (tiered pricing) _}</span>
+                                                {% endif %}
+                                                <br>
                                                 <small class="text-muted">
                                                     {% if price.is_recurring %}
                                                         {_ Recurring _} - {{ price.recurring_period|escape}}

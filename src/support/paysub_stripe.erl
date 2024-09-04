@@ -18,6 +18,7 @@
 
 
 % https://stripe.com/docs/billing/subscriptions/build-subscriptions
+% https://docs.stripe.com/api/checkout/sessions/create
 %
 % 1. Checkout
 % -----------
@@ -41,6 +42,7 @@
     checkout_session_sync/2,
     checkout_session_completed/2,
 
+    is_customer/2,
     is_customer_portal/2,
     customer_portal_session_url/2,
     customer_portal_session_url/3,
@@ -60,6 +62,8 @@
     sync_subscriptions/1,
     sync_subscription/2,
     delete_subscription/2,
+
+    update_subscription_quantity/4,
 
     sync_invoices/1,
     sync_invoice/2,
@@ -103,6 +107,33 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
             z_render:wire({redirect, [ {location, Url} ]}, Context);
         {error, _} ->
             z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
+    end.
+
+%% @doc Check if this user id has a known stripe customer id, if so then a
+%% portal session is possible.
+-spec is_customer(UserId, Context) -> boolean() when
+    UserId :: m_rsc:resource(),
+    Context :: z:context().
+is_customer(UserId, Context) ->
+    case m_rsc:rid(UserId, Context) of
+        undefined ->
+            false;
+        RscId ->
+            case z_acl:rsc_editable(RscId, Context)
+                orelse is_allowed_portal_session(RscId, Context)
+            of
+                true ->
+                    case m_paysub:get_customer(stripe, RscId, Context) of
+                        {ok, #{
+                            <<"psp_customer_id">> := _
+                        }} ->
+                            true;
+                        {error, _} ->
+                            false
+                    end;
+                false ->
+                    false
+            end
     end.
 
 %% @doc Check if this user id has a known stripe customer id, if so then a
@@ -197,11 +228,14 @@ customer_portal_session_url(UserId, ReturnUrl, Context) ->
             end
     end.
 
+%% @doc Only the subscriber (user) or the maincontact of the subscriber are allowed to
+%% use the Stripe customer portal.
 is_allowed_portal_session(Id, Context) ->
     Id =:= z_acl:user(Context) orelse m_paysub:is_user_maincontact(Id, Context).
 
 
 %% @doc Start a Stripe checkout for the given payment/subscription request.
+%% See documentation at https://docs.stripe.com/api/checkout/sessions/create
 -spec checkout_session_create(Args, Context) -> {ok, Url} | {error, Reason} when
     Args :: proplists:proplist(),
     Context :: z:context(),
@@ -349,7 +383,14 @@ checkout_session_create(Args, Context) ->
                         }
                     }
             end,
-            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload2, Context) of
+            Payload3 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
+                <<>> -> Payload2;
+                RequestedCurrency ->
+                    Payload2#{
+                        currency => RequestedCurrency
+                    }
+            end,
+            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload3, Context) of
                 {ok, #{
                     <<"url">> := Url,
                     <<"id">> := PspCheckoutId,
@@ -396,6 +437,8 @@ checkout_session_create(Args, Context) ->
     end.
 
 checkout_line_items(Args, Context) ->
+    QuantityArg = z_convert:to_integer(proplists:get_value(quantity, Args)),
+    Quantity = if QuantityArg =:= undefined -> 1; true -> QuantityArg end,
     case proplists:get_value(price, Args) of
         undefined ->
             case proplists:get_value(line_items, Args, []) of
@@ -406,17 +449,28 @@ checkout_line_items(Args, Context) ->
                         fun
                             (_Item, {error, _} = Error) ->
                                 Error;
-                            (#{ price := PriceName } = Item, {ok, {IsRecurringAcc, IsUseMainContactAcc, LineAcc}}) ->
+                            (#{ price := PriceName } = Item,
+                             {ok, {IsRecurringAcc, IsUseMainContactAcc, LineAcc}}) ->
                                 case m_paysub:get_price(stripe, PriceName, Context) of
                                     {ok, #{
                                         <<"psp_price_id">> := PriceId,
                                         <<"is_recurring">> := IsRecurringPrice,
-                                        <<"is_use_maincontact">> := IsUseMainContact
+                                        <<"is_use_maincontact">> := IsUseMainContact,
+                                        <<"billing_scheme">> := BillingScheme
                                     }} ->
+                                        NewQuantity = case BillingScheme of
+                                            <<"tiered">> ->
+                                                case QuantityArg of
+                                                    undefined -> maps:get(quantity, Item, Quantity);
+                                                    _ -> Quantity
+                                                end;
+                                            _ ->
+                                                maps:get(quantity, Item, Quantity)
+                                        end,
                                         LineAcc1 = [
-                                            #{
+                                           #{
                                                 price => PriceId,
-                                                quantity => maps:get(quantity, Item, 1)
+                                                quantity => NewQuantity
                                             }
                                             | LineAcc
                                         ],
@@ -440,7 +494,7 @@ checkout_line_items(Args, Context) ->
                     LineItems = [
                         #{
                             price => PriceId,
-                            quantity => 1
+                            quantity => Quantity
                         }
                     ],
                     {ok, {IsRecurring, IsUseMainContact, LineItems}};
@@ -597,7 +651,7 @@ update_billing_address(CustId, Context) ->
                     Customer = #{
                         <<"address">> => Address,
                         <<"email">> => Email,
-                        <<"phone">> => m_paysub:billing_phone(Id, Context),
+                        <<"phone">> => truncate(m_paysub:billing_phone(Id, Context), 19),
                         <<"name">> => m_paysub:billing_name(Id, Context),
                         <<"preferred_locales">> => [ bin(pref_language(Id, ContextSudo)) ],
                         <<"metadata">> => #{
@@ -825,9 +879,12 @@ stripe_price(#{
         <<"object">> := <<"price">>,
         <<"active">> := IsActive,
         <<"nickname">> := Nickname,
+        <<"lookup_key">> := Key,
         <<"product">> := ProductId,
         <<"currency">> := Currency,
         <<"unit_amount">> := UnitAmount,
+        <<"billing_scheme">> := BillingScheme,
+        <<"tiers_mode">> := TiersMode,
         <<"type">> := Type
     } = P) ->
     #{
@@ -838,8 +895,11 @@ stripe_price(#{
         is_recurring => Type =:= <<"recurring">>,
         recurring_period => recurring_period(P),
         name => z_convert:to_binary(Nickname),
+        key => z_convert:to_binary(Key),
         currency => z_string:to_upper(Currency),
-        amount => UnitAmount
+        amount => UnitAmount,
+        billing_scheme => BillingScheme,
+        tiers_mode => TiersMode
     }.
 
 recurring_period(#{ <<"recurring">> := #{ <<"interval">> := Interval }}) ->
@@ -1087,8 +1147,8 @@ sync_subscription(SubId, Context) when is_binary(SubId) ->
     end;
 sync_subscription(Sub, Context) ->
     SSub = stripe_subscription(Sub, Context),
-    PriceIds = stripe_subscription_prices(Sub),
-    ok = m_paysub:sync_subscription(stripe, SSub, PriceIds, Context),
+    PriceItems = stripe_subscription_prices(Sub),
+    ok = m_paysub:sync_subscription(stripe, SSub, PriceItems, Context),
     OptRscId = maps:get(rsc_id, SSub, undefined),
     CustomerId = maps:get(psp_customer_id, SSub),
     maybe_set_customer_rsc_id(OptRscId, CustomerId, Context).
@@ -1173,13 +1233,18 @@ stripe_subscription_prices(
     }) ->
     lists:map(
         fun(#{
-            <<"id">> := _Id,
+            <<"id">> := Id,
             <<"object">> := <<"subscription_item">>,
             <<"price">> := #{
                 <<"id">> := PriceId
-            }
+            },
+            <<"quantity">> := Quantity
         }) ->
-            PriceId
+            #{
+                psp_price_id => PriceId,
+                psp_item_id => Id,
+                quantity => Quantity
+            }
         end,
         Items).
 
@@ -1214,6 +1279,32 @@ sync_subscriptions(Context) ->
     Context :: z:context().
 delete_subscription(#{ <<"id">> := Id }, Context) ->
     m_paysub:delete_subscription(stripe, Id, Context).
+
+
+%% @doc Update the quantity of a subscription. The firts tiered price in the subscripton items
+%% will have its quantities updated.
+-spec update_subscription_quantity(SubId, ItemId, Quantity, Context) -> ok | {error, enoent} when
+    SubId :: binary(),
+    ItemId :: binary(),
+    Quantity :: integer(),
+    Context :: z:context().
+update_subscription_quantity(SubId, ItemId, Quantity, Context) ->
+    Payload = #{
+        items => [
+            #{
+                id => ItemId,
+                quantity => Quantity
+            }
+        ]
+    },
+    Path = [ <<"subscriptions">>, SubId ],
+    case paysub_stripe_api:fetch(post, Path, Payload, Context) of
+        {ok, Sub} ->
+            sync_subscription(Sub, Context),
+            ok;
+        {error, _} = Error ->
+            Error
+    end.
 
 
 %% @doc Sync all invoices in Stripe with invoices here.

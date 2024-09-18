@@ -28,15 +28,40 @@
                         <label class="control-label">{_ Status _}</label>
                         <select class="form-control" name="qstatus">
                             <option></option>
-                            <optgroup label="{_ Logical status _}">
+                            <optgroup label="{_ Active/inactive _}">
                                 <option value="uncanceled">{_ Not canceled _}</option>
-                                <option value="allaccess">{_ Access _}</option>
-                                <option value="allactive">{_ Active _}</option>
-                                <option value="allpending">{_ Pending _}</option>
+                                {% if m.paysub.is_unpaid_access %}
+                                    <option value="all_access">{_ Access subscription _}</option>
+                                    <option value="all_pending">{_ Pending subscription _}</option>
+                                {% endif %}
+                                <option value="all_active">{_ Active subscription _}</option>
+                                <option value="all_inactive">{_ Inactive subscription _}</option>
+                                <option value="pastdue_noaccess">{_ Past due without active _}</option>
+                                <option value="incomplete_noaccess">{_ Incomplete without other access _}</option>
                             </optgroup>
-                            <optgroup label="{_ Exact status _}">
-                                {% for s in m.paysub.subscriptions.states %}
-                                    <option value="{{ s }}">{{ s }}</option>
+                            <optgroup label="{_ New active subscriptions _}">
+                                <option value="new_w1">{_ New in last week _}</option>
+                                <option value="new_m1">{_ New in last month _}</option>
+                                <option value="new_y1">{_ New in last year _}</option>
+                            </optgroup>
+                            <optgroup label="{_ Cancelations _}">
+                                <option value="canceled_now">{_ Canceling at this moment _}</option>
+                                <option value="canceled_m1">{_ Canceled in last month _}</option>
+                                <option value="canceled_y1">{_ Canceled in last year _}</option>
+                            </optgroup>
+                            <optgroup label="{_ Specific at any time _}">
+                                {% for s, t in [
+                                    ['incomplete', _"Incomplete"],
+                                    ['incomplete_expired', _"Incomplete expired"],
+                                    ['trialing', _"Trialing"],
+                                    ['active', _"Active"],
+                                    ['past_due', _"Past due"],
+                                    ['canceled', _"Canceled"],
+                                    ['unpaid', _"Unpaid"]
+                                ] %}
+                                    <option value="{{ s }}" {% if q.qpaysub_subscription_status == s %}selected{% endif %}>
+                                        {{ t }}
+                                    </option>
                                 {% endfor %}
                             </optgroup>
                         </select>
@@ -149,7 +174,6 @@
                 })
             {% endjavascript %}
         </div>
-
 
         {% with m.search.paged[{paysub_subscriptions
                     rsc_id=q.qrsc_id

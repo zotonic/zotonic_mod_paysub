@@ -73,8 +73,10 @@
     overview_ug/1,
 
     count_invoices/1,
+    count_user_invoices/2,
     count_subscriptions/1,
     count_payments/1,
+    count_user_payments/2,
     count_products/1,
 
     user_groups/2,
@@ -141,6 +143,8 @@
     rsc_merge/3,
     move_subscriptions/4,
     has_moveable_maincontact_subs/2,
+
+    products_add_prices/2,
 
     install/1,
 

@@ -10,7 +10,7 @@
     or id.is_a.institute
     or id.is_a.institution
 %}
-    <div id="rsc-paysub-subs" class="widget do_adminwidget" data-adminwidget="minifiedOnInit:false, minifier:true">
+    <div id="rsc-paysub-subs" class="widget do_adminwidget" data-adminwidget='{ "minifiedOnInit": false, "minifier": true }'>
         <div class="widget-header">
             {_ Payments &amp; Subscriptions &ndash; Subscriptions _}
             <div class="widget-header-tools"></div>

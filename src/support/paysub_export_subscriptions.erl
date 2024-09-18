@@ -35,7 +35,7 @@ fetch_data(Context) ->
     Filters = maps:from_list(QArgs1),
     #search_result{
         result = Rows
-    } = m_paysub:search_query(subscriptions, Filters, {1, 100_000}, Context),
+    } = m_paysub_search:search_query(subscriptions, Filters, {1, 100_000}, Context),
     {ok, Rows}.
 
 add_invoice(Sub, Context) ->

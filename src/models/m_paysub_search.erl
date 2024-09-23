@@ -374,7 +374,7 @@ search_query(subscriptions, Filters, {Offset, Limit}, Context) ->
         end
     ]),
     N = length(Args),
-    Query = lists:flatten(["
+    Query = iolist_to_binary(["
         select sub.*,
                cust.id as customer_id,
                cust.psp_customer_id as psp_customer_id,
@@ -391,7 +391,7 @@ search_query(subscriptions, Filters, {Offset, Limit}, Context) ->
         offset $", integer_to_list(N+1), "
         limit $", integer_to_list(N+2)
     ]),
-    Count = lists:flatten(["
+    Count = iolist_to_binary(["
         select count(*) ", From
     ]),
     {ok, Subs} = z_db:qmap_props(Query, Args ++ [ Offset-1, Limit ], Context),
@@ -552,11 +552,11 @@ subscription_terms([ {<<"status">>, Status} | Ts ], Ws, Args, Context) ->
               and sub.rsc_id not in (
                         select paysub.rsc_id
                         from paysub_subscription paysub
-                        where paysub.status = any(41)
+                        where paysub.status = any($1)
                           and paysub.rsc_id is not null
                           and (ended_at is null or ended_at > now())
                     )",
-             m_paysub:access_states(Context) -- [ <<"past_due">> ]};
+             [ m_paysub:access_states(Context) -- [ <<"past_due">> ] ]};
         <<"incomplete_noaccess">> ->
             % All subscribers with status incomplete without an other access subscription
             {"sub.status in ('incomplete', 'incomplete_expired')

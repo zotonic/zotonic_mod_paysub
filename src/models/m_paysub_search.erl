@@ -617,9 +617,9 @@ subscription_terms([ {<<"status">>, Status} | Ts ], Ws, Args, Context) ->
             S = iolist_to_binary([ $$, integer_to_binary(N) ]),
             R = iolist_to_binary([ $$, integer_to_binary(N + length(Args)) ]),
             QAcc1 = binary:replace(QAcc, S, R, [ global ]),
-            {N+1, QAcc1}
+            {N-1, QAcc1}
         end,
-        {1, Q1},
+        {length(QArgs), Q1},
         QArgs),
     Ws1 = Ws ++ [Q2],
     Args1 = lists:reverse(QArgs) ++ Args,

@@ -236,8 +236,9 @@ event(#postback{ message = {move_subscriptions, Args} }, Context) ->
 observe_acl_user_groups_modify(#acl_user_groups_modify{ id = undefined }, Groups, _Context) ->
     Groups;
 observe_acl_user_groups_modify(#acl_user_groups_modify{ id = UserId }, Groups, Context) ->
+    ContextAsync = z_context:prune_for_async(Context),
     MainContactOf = m_edge:subjects(UserId, hasmaincontact, Context),
-    UGs = m_paysub:users_groups([ UserId | MainContactOf ], Context)
+    UGs = m_paysub:users_groups([ UserId | MainContactOf ], ContextAsync)
           ++ main_contact_ugs(MainContactOf, Context),
     Groups1 = case UGs of
         [] ->

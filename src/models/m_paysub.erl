@@ -1100,29 +1100,11 @@ count_user_subscriptions(UserId, Context) ->
 
 %% @doc Return the list of user groups the user has subscriptions for.
 %% Status must be one of the access states.
--spec user_groups( m_rsc:resource_id(), z:context() ) -> [ m_rsc:resource_id() ].
+-spec user_groups( m_rsc:resource(), z:context() ) -> [ m_rsc:resource_id() ].
 user_groups(UserId0, Context) ->
     case m_rsc:rid(UserId0, Context) of
-        undefined ->
-            [];
-        UserId ->
-            Ids = z_db:q("
-                select distinct prod.user_group_id
-                from paysub_product prod
-                    join paysub_price price
-                        on price.psp_product_id = prod.psp_product_id
-                        and price.psp = prod.psp
-                    join paysub_subscription_item item
-                        on price.psp_price_id = item.psp_price_id
-                        and price.psp = item.psp
-                    join paysub_subscription sub
-                        on sub.id = item.subscription_id
-                        and sub.psp = prod.psp
-                where sub.status = any($2)
-                  and sub.rsc_id = $1
-                  and prod.user_group_id is not null
-                ", [ UserId, access_states(Context) ], Context),
-            [ Id || {Id} <- Ids ]
+        undefined -> [];
+        UserId -> users_groups([UserId], Context)
     end.
 
 %% @doc Return the list of user groups the users have subscriptions for.
@@ -1134,23 +1116,32 @@ user_groups(UserId0, Context) ->
     Context :: z:context(),
     UserGroupIds :: [ m_rsc:resource_id() ].
 users_groups(UserIds, Context) ->
-    Ids = z_db:q("
-        select distinct prod.user_group_id
-        from paysub_product prod
-            join paysub_price price
-                on price.psp_product_id = prod.psp_product_id
-                and price.psp = prod.psp
-            join paysub_subscription_item item
-                on price.psp_price_id = item.psp_price_id
-                and price.psp = item.psp
-            join paysub_subscription sub
-                on sub.id = item.subscription_id
-                and sub.psp = prod.psp
-        where sub.status = any($2)
-          and sub.rsc_id = any($1)
-          and prod.user_group_id is not null
-        ", [ UserIds, access_states(Context) ], Context),
+    F = fun() ->
+        z_db:q("
+            select distinct prod.user_group_id
+            from paysub_product prod
+                join paysub_price price
+                    on price.psp_product_id = prod.psp_product_id
+                    and price.psp = prod.psp
+                join paysub_subscription_item item
+                    on price.psp_price_id = item.psp_price_id
+                    and price.psp = item.psp
+                join paysub_subscription sub
+                    on sub.id = item.subscription_id
+                    and sub.psp = prod.psp
+            where sub.status = any($2)
+              and sub.rsc_id = any($1)
+              and prod.user_group_id is not null
+            ", [ UserIds, access_states(Context) ], Context)
+    end,
+    Key = {?FUNCTION_NAME, UserIds},
+    Deps = [ {paysub_ug, UId} || UId <- UserIds ],
+    Ids = z_depcache:memo(F, Key, 3600, [ paysub | Deps ], Context),
     [ Id || {Id} <- Ids ].
+
+%% @doc Flush cached dependencies on the resource id.
+flush_rsc_id(RscId, Context) ->
+    z_depcache:flush({paysub_ug, RscId}, Context).
 
 
 %% @doc Return the complete list of subscriptions for an user.
@@ -1988,6 +1979,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
           and (rsc_id <> $3 or rsc_id is null)",
         [ PSP, PspCustId, RscId ],
         Context),
+    flush_rsc_id(RscId, Context),
     % Updating the customer might need update of metadata at the PSP
     case z_db:q("
         update paysub_customer
@@ -2291,6 +2283,13 @@ notify_subscription(SubId, IsRetry, Context) ->
         Context)
     of
         ok ->
+            RscId = z_db:q1("
+                select rsc_id
+                from paysub_subscription sub
+                where sub.id = $1",
+                [ SubId ],
+                Context),
+            flush_rsc_id(RscId, Context),
             ok;
         {error, retry} when IsRetry ->
             % Could be a race condition where the customer record is in transit
@@ -2369,7 +2368,19 @@ update_subscription_1(PSP, PspSubId, Sub, Context) ->
         Context)
     of
         undefined ->
-            Sub1 = Sub#{ psp => PSP, modified => calendar:universal_time() },
+            {psp_customer_id, PspCustId} = proplists:lookup(psp_customer_id, Sub),
+            RscId = z_db:q1("
+                select rsc_id
+                from paysub_customer
+                where psp = $1
+                  and psp_customer_id = $2",
+                [ PSP, PspCustId],
+                Context),
+            Sub1 = Sub#{
+                psp => PSP,
+                rsc_id => RscId,
+                modified => calendar:universal_time()
+            },
             case z_db:insert(paysub_subscription, Sub1, Context) of
                 {ok, _} = Ok ->
                     Ok;
@@ -2392,20 +2403,30 @@ update_subscription_1(PSP, PspSubId, Sub, Context) ->
     end.
 
 
--spec delete_subscription(PSP, Id, Context) -> ok | {error, enoent} when
+-spec delete_subscription(PSP, PspSubId, Context) -> ok | {error, enoent} when
     PSP :: atom() | binary(),
-    Id :: binary(),
+    PspSubId :: binary(),
     Context :: z:context().
-delete_subscription(PSP, Id, Context) ->
+delete_subscription(PSP, PspSubId, Context) ->
+    RscId = z_db:q1("
+        select rsc_id
+        from paysub_subscription
+        where psp = $1
+          and psp_subscription_id = $2",
+        [ PSP, PspSubId ],
+        Context),
     case z_db:q("
         delete from paysub_subscription
         where psp = $1
           and psp_subscription_id = $2",
-        [ PSP, Id ],
+        [ PSP, PspSubId ],
         Context)
     of
-        1 -> ok;
-        0 -> {error, enoent}
+        1 ->
+            flush_rsc_id(RscId, Context),
+            ok;
+        0 ->
+            {error, enoent}
     end.
 
 
@@ -2514,6 +2535,8 @@ rsc_merge(WinnerId, LoserId, Context) ->
         set rsc_id = $1
         where rsc_id = $2
         ", [ WinnerId, LoserId ], Context),
+    flush_rsc_id(LoserId, Context),
+    flush_rsc_id(WinnerId, Context),
     ok.
 
 
@@ -2549,7 +2572,10 @@ move_subscriptions(FromId, ToId, true, Context) ->
                   and psp = $3
                 ", [ ToId, FromId, PSP ], Context)
         end,
-        PSPs).
+        PSPs),
+    flush_rsc_id(FromId, Context),
+    flush_rsc_id(ToId, Context),
+    ok.
 
 %% @doc Check if the resource has "main contact" subscriptions and is connected with
 %% a hasmaincontact edge from another resource.

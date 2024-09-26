@@ -2319,7 +2319,7 @@ sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, NewPric
             z_db:q("
                 delete from paysub_subscription_item
                 where subscription_id = $1
-                  and psp_item_id = $3",
+                  and psp_item_id = $2",
                 [ SubId, ItemId ],
                 Context)
         end,

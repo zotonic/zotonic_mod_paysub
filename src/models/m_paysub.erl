@@ -864,15 +864,18 @@ is_subscriber(Id, Context) ->
                     MainContactOf = m_edge:subjects(UserId, hasmaincontact, Context),
                     SubscriberIds = [ UserId | MainContactOf ],
                     States = pending_states(Context) ++ active_states(),
-                    Count = z_db:q1("
-                        select count(*)
-                        from paysub_subscription
-                        where rsc_id = any($1::int[])
-                          and status = any($2)
-                        ",
-                        [ SubscriberIds, States ],
-                        Context),
-                    Count > 0;
+                    F = fun() ->
+                        Count = z_db:q1("
+                            select count(*)
+                            from paysub_subscription
+                            where rsc_id = any($1::int[])
+                              and status = any($2)
+                            ",
+                            [ SubscriberIds, States ],
+                            Context),
+                        Count > 0
+                    end,
+                    z_depcache:memo(F, {paysub_is_sub, Id}, ?DAY, [ paysub | SubscriberIds ], Context);
                 false ->
                     false
             end
@@ -1135,16 +1138,29 @@ users_groups(UserIds, Context) ->
             ", [ UserIds, access_states(Context) ], Context)
     end,
     Key = {?FUNCTION_NAME, UserIds},
-    Deps = [ {paysub_ug, UId} || UId <- UserIds ],
-    Ids = z_depcache:memo(F, Key, 3600, [ paysub | Deps ], Context),
+    Ids = z_depcache:memo(F, Key, ?HOUR, [ paysub | UserIds ], Context),
     [ Id || {Id} <- Ids ].
 
-%% @doc Flush cached dependencies on the resource id.
+%% @doc Flush cached dependencies on the resource id and the main contacts of
+%% the resource id. Called when subscriptions are updated.
+-spec flush_rsc_id(RscId, Context) -> ok when
+    RscId :: m_rsc:resource_id(),
+    Context :: z:context().
 flush_rsc_id(RscId, Context) ->
-    z_depcache:flush({paysub_ug, RscId}, Context).
-
+    z_depcache:flush(RscId, Context),
+    MainContactOf = m_edge:objects(RscId, hasmaincontact, Context),
+    lists:foreach(
+        fun(MId) ->
+            z_depcache:flush(MId, Context)
+        end,
+        MainContactOf),
+    z_notifier:notify(#paysub_subscription_done{ rsc_id = RscId }, Context),
+    ok.
 
 %% @doc Return the complete list of subscriptions for an user.
+-spec user_subscriptions(UserId, Context) -> {ok, list(map())} | {error, enoent} when
+    UserId :: m_rsc:resource_id(),
+    Context :: z:context().
 user_subscriptions(UserId0, Context) ->
     case m_rsc:rid(UserId0, Context) of
         undefined ->
@@ -2232,15 +2248,19 @@ notify_subscription(SubId, IsRetry, Context) ->
                     end,
                     case get_customer(PSP, PspCustId, Ctx) of
                         {ok, Cust} ->
-                            Result = z_notifier:first(
+                            case z_notifier:first(
                                 #paysub_subscription{
                                     action = Action,
                                     status = Status,
                                     subscription = Sub,
                                     customer = Cust,
                                     checkout_status = undefined
-                                }, Ctx),
-                            Result;
+                                }, Ctx)
+                            of
+                                undefined -> ok;
+                                ok -> ok;
+                                {error, _} = Error -> Error
+                            end;
                         {error, _} when IsRetry ->
                             ?LOG_NOTICE(#{
                                 in => zotonic_mod_paysub,

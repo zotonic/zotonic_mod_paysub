@@ -2368,7 +2368,7 @@ update_subscription_1(PSP, PspSubId, Sub, Context) ->
         Context)
     of
         undefined ->
-            {psp_customer_id, PspCustId} = proplists:lookup(psp_customer_id, Sub),
+            #{ psp_customer_id := PspCustId } = Sub,
             RscId = z_db:q1("
                 select rsc_id
                 from paysub_customer

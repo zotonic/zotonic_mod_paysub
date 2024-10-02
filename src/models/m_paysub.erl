@@ -2910,7 +2910,7 @@ install_tables(Context) ->
             psp_product_id character varying(128) not null,
             props_json jsonb,
             currency character varying(16) not null default 'EUR'::character varying,
-            amount integer default,
+            amount integer,
             billing_scheme character varying(32) not null default 'per_unit',
             is_recurring boolean not null default false,
             recurring_period character varying(16),

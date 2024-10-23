@@ -42,6 +42,8 @@
     checkout_session_sync/2,
     checkout_session_completed/2,
 
+    is_configured/1,
+
     is_customer/2,
     is_customer_portal/2,
     customer_portal_session_url/2,
@@ -249,8 +251,13 @@ checkout_session_create(Args, Context) ->
             % For organisations with a 'has-maincontact' relation to the user
             % the subscriber is the (as yet undefined) organisation.
             SubscriberId = case IsUseMainContact of
-                true -> undefined;
-                false -> UserId
+                true ->
+                    undefined;
+                false ->
+                    case proplists:lookup(subscriber_id, Args) of
+                        {subscriber_id, SubId} -> SubId;
+                        none -> UserId
+                    end
             end,
             Mode = case z_convert:to_binary(proplists:get_value(mode, Args)) of
                 <<>> when IsRecurring -> subscription;
@@ -293,8 +300,10 @@ checkout_session_create(Args, Context) ->
                 client_reference_id => CheckoutNr,
                 allow_promotion_codes => true,
                 metadata => CheckoutMetadata1,
-                line_items => LineItems
+                line_items => LineItems,
+                locale => z_context:language(Context)
             },
+            IsBillingAddressCollection = z_convert:to_bool(proplists:get_value(is_billing_address_collection, Args, true)),
             Payload1 = case z_convert:to_binary(proplists:get_value(email, Args)) of
                 <<>> ->
                     Payload;
@@ -302,6 +311,10 @@ checkout_session_create(Args, Context) ->
                     Payload#{
                         customer_email => Email
                     }
+            end,
+            BaseSub = case z_convert:to_integer(proplists:get_value(trial_days, Args, 0)) of
+                N when is_integer(N), N >= 1 -> #{ trial_period_days => N };
+                _ -> #{}
             end,
             Payload2 = case m_paysub:get_customer(stripe, SubscriberId, Context) of
                 {ok, #{
@@ -314,12 +327,12 @@ checkout_session_create(Args, Context) ->
                             address => auto
                         }
                     });
-                {error, enoent} when SubscriberId =/= undefined ->
+                {error, enoent} when is_integer(SubscriberId) ->
                     PE1 = case Payload1 of
                         #{
                             customer_email := _
                         } ->
-                            Payload;
+                            Payload1;
                         _ ->
                             case m_rsc:p_no_acl(SubscriberId, email_raw, Context) of
                                 undefined ->
@@ -338,8 +351,12 @@ checkout_session_create(Args, Context) ->
                     case Mode of
                         subscription ->
                             PE2#{
-                                billing_address_collection => required,
-                                subscription_data => #{
+                                billing_address_collection =>
+                                    case IsBillingAddressCollection of
+                                        true -> required;
+                                        false -> auto
+                                    end,
+                                subscription_data => BaseSub#{
                                     metadata => #{
                                         rsc_id => SubscriberId,
                                         page_url => m_rsc:p_no_acl(SubscriberId, page_url_abs, Context),
@@ -377,10 +394,15 @@ checkout_session_create(Args, Context) ->
                     };
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= subscription ->
                     Payload1#{
-                        billing_address_collection => required,
+                        billing_address_collection =>
+                            case IsBillingAddressCollection of
+                                true -> required;
+                                false -> auto
+                            end,
                         consent_collection => #{
                             terms_of_service => required
-                        }
+                        },
+                        subscription_data => BaseSub
                     }
             end,
             Payload3 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
@@ -615,6 +637,14 @@ checkout_session_completed(#{ <<"mode">> := <<"payment">> } = Session, Context) 
         <<"client_reference_id">> := CheckoutNr
     } = Session,
     m_paysub:checkout_completed(stripe, CheckoutNr, Context).
+
+
+%% @doc Check if a Stripe API key is configured. If so then it can be assumed that Stripe
+%% can be used.
+-spec is_configured(Context) -> boolean() when
+    Context :: z:context().
+is_configured(Context) ->
+    not z_utils:is_empty(m_config:get_value(mod_paysub, stripe_api_key, <<>>, Context)).
 
 
 %% @doc Sync the resource billing address to the customer at Stripe.

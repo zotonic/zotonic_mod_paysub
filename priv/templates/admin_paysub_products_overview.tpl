@@ -4,6 +4,17 @@
 
 {% block content %}
     <div class="admin-header">
+        {% if m.acl.is_admin or m.acl.is_allowed.use.mod_paysub %}
+            <button class="btn btn-default pull-right" id="update-products">
+                {_ Update from services _}
+            </button>
+            {% wire id="update-products"
+                    action={mask message="Updating products..." target=" body"}
+                    postback={products_fetch}
+                    delegate=`mod_paysub`
+            %}
+        {% endif %}
+
         <h2>
             {_ Products _}
         </h2>
@@ -75,9 +86,14 @@
                             <td>
                                 <table class="table">
                                     {% for price in p.prices %}
+                                        {% if price.is_active or price.count %}
                                         <tr>
                                             <td width="60%" class="clickable">
-                                                {{ price.name|escape }}<br>
+                                                {{ price.name|escape }}
+                                                {% if not price.is_active %}
+                                                    &nbsp; <span class="label label-default">{_ Inactive _}</span>
+                                                {% endif %}
+                                                <br>
                                                 <small>
                                                     {{ price.count }} <span class="text-muted">{_ subscriptions _}</span>
                                                 </small>
@@ -95,6 +111,7 @@
                                                 </small>
                                             </td>
                                         </tr>
+                                        {% endif %}
                                     {% endfor %}
                                 </table>
                             </td>

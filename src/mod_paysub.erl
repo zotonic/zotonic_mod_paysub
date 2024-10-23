@@ -24,11 +24,14 @@
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication ]).
 -mod_schema(13).
+-mod_prio(500).
 
 -author("Marc Worrell <marc@worrell.nl>").
 
 -export([
     event/2,
+
+    observe_paysub_customer/2,
 
     observe_acl_user_groups_modify/3,
     observe_search_query_term/2,
@@ -47,12 +50,15 @@
 
     move_subscriptions/4,
 
-    init/1,
-    manage_schema/2
+    sync_products/1,
+
+    manage_schema/2,
+    manage_data/2
 ]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 -include_lib("zotonic_mod_admin/include/admin_menu.hrl").
+-include("../include/paysub.hrl").
 
 event(#submit{ message = {product_update, Args} }, Context) ->
     case m_paysub:is_allowed_paysub(Context) of
@@ -79,7 +85,7 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
         <<"stripe">> ->
             case paysub_stripe:customer_portal_session_url(z_acl:user(Context), ReturnUrl, Context) of
                 {ok, PortalUrl} ->
-                    z_render:wire({redirect, [{url, PortalUrl}]}, Context);
+                    z_render:wire({redirect, [{location, PortalUrl}]}, Context);
                 {error, _} ->
                     z_render:growl(?__("Sorry, can't redirect to the customer portal.", Context), Context)
             end;
@@ -223,6 +229,91 @@ event(#postback{ message = {move_subscriptions, Args} }, Context) ->
             end;
         false ->
             z_render:growl(?__("You are not allowed to do this.", Context), Context)
+    end;
+event(#postback{ message = {products_fetch, _Args} }, Context) ->
+    case m_paysub:is_allowed_paysub(Context) of
+        true ->
+            sync_products(Context),
+            z_render:wire({reload, []}, Context);
+        false ->
+            Context1 = z_render:wire({unmask, [ {target, " body"} ]}, Context),
+            z_render:growl(?__("You are not allowed to edit products.", Context), Context1)
+    end.
+
+
+%% @doc Observe updates to the billing address at the PSP after sync to the customer.
+%% Ensure that the address fields in the rsc billing address is the same as the customer
+%% fields. If the config mod_paysub.is_no_customer_sync is set, then the resource will
+%% not be updated.
+observe_paysub_customer(#paysub_customer{ action = delete }, _Context) ->
+    undefined;
+observe_paysub_customer(#paysub_customer{ customer = #{ <<"rsc_id">> := undefined } }, _Context) ->
+    undefined;
+observe_paysub_customer(#paysub_customer{ customer = #{ <<"rsc_id">> := RscId } = Cust }, Context) ->
+    case m_config:get_boolean(mod_paysub, is_no_customer_sync, Context) of
+        true ->
+            undefined;
+        false ->
+            case m_paysub:billing_address(RscId, Context) of
+                {ok, Billing} ->
+                    Diff = billing_changed(Cust, Billing),
+                    case maps:size(Diff) of
+                        0 ->
+                            ok;
+                        _ ->
+                            ?LOG_INFO(#{
+                                in => zotonic_mod_paysub,
+                                text => <<"Synchronizing billing information from psp to resource">>,
+                                result => ok,
+                                rsc_id => RscId,
+                                psp => maps:get(<<"psp">>, Cust),
+                                psp_customer_id => maps:get(<<"psp_customer_id">>, Cust),
+                                billing => Diff
+                            }),
+                            m_rsc:update(RscId, Diff, [ no_touch ], z_acl:sudo(Context))
+                    end
+            end
+    end.
+
+% Collect the changed billing address.
+billing_changed(Cust, Billing) ->
+    {Upd, UpdIsAdr} = lists:foldl(
+        fun({C, B, IsAdr}, {Acc, AccIsAdr}) ->
+            CV = z_convert:to_binary(maps:get(C, Cust, <<>>)),
+            BV = z_convert:to_binary(maps:get(B, Billing, <<>>)),
+            if
+                CV =:= BV ->
+                    {Acc, AccIsAdr};
+                true ->
+                    {Acc#{ <<"billing_", B/binary>> => CV }, AccIsAdr orelse IsAdr}
+            end
+        end,
+        {#{}, false},
+        [
+            {<<"name">>, <<"name">>, false},
+            {<<"email">>, <<"email">>, false},
+            {<<"phone">>, <<"phone">>, false},
+            {<<"address_country">>, <<"country">>, true},
+            {<<"address_city">>, <<"city">>, true},
+            {<<"address_street_1">>, <<"street_1">>, true},
+            {<<"address_street_2">>, <<"street_2">>, true},
+            {<<"address_postcode">>, <<"postcode">>, true},
+            {<<"address_state">>, <<"state">>, true}
+        ]),
+    if
+        UpdIsAdr ->
+            % Always set the complete billing address if any billing address part
+            % is changed.
+            Upd#{
+                <<"billing_country">> => maps:get(<<"address_country">>, Cust, undefined),
+                <<"billing_city">> => maps:get(<<"address_city">>, Cust, undefined),
+                <<"billing_street_1">> => maps:get(<<"address_street_1">>, Cust, undefined),
+                <<"billing_street_2">> => maps:get(<<"address_street_2">>, Cust, undefined),
+                <<"billing_postcode">> => maps:get(<<"address_postcode">>, Cust, undefined),
+                <<"billing_state">> => maps:get(<<"address_state">>, Cust, undefined)
+            };
+        true ->
+            Upd
     end.
 
 
@@ -422,22 +513,41 @@ observe_export_resource_encode(_, _) ->
     undefined.
 
 
+%% @doc Fetch all products and prices from all payment service providers.
+-spec sync_products(Context) -> ok | {error, Reason} when
+    Context :: z:context(),
+    Reason :: term().
+sync_products(Context) ->
+    case paysub_stripe:is_configured(Context) of
+        true ->
+            case paysub_stripe:sync_products(Context) of
+                ok -> paysub_stripe:sync_prices(Context);
+                {error, _} = Error -> Error
+            end;
+        false ->
+            ok
+    end.
 
-init(Context) ->
-    m_config:set_default_value(?MODULE, stripe_api_key, <<>>, Context),
-    m_config:set_default_value(?MODULE, stripe_webhook_secret, <<>>, Context),
-    ok.
 
 manage_schema(_Version, Context) ->
-    ok = m_paysub:install(Context),
-    #datamodel{
-        resources = [
-            {ug_inactive_member, acl_user_group, #{
-                <<"language">> => [ en, de ],
-                <<"title">> => #trans{ tr = [
-                    {en, <<"Members without subscriptions">>},
-                    {de, <<"Mitglieder ohne Abonnement"/utf8>>}
+    ok = paysub_schema:install(Context),
+    case m_rsc:rid(acl_user_group, Context) of
+        undefined ->
+            #datamodel{};
+        _UG ->
+            #datamodel{
+                resources = [
+                    {ug_inactive_member, acl_user_group, #{
+                        <<"language">> => [ en, de ],
+                        <<"title">> => #trans{ tr = [
+                            {en, <<"Members without subscriptions">>},
+                            {nl, <<"Leden zonder abonnement">>},
+                            {de, <<"Mitglieder ohne Abonnement"/utf8>>}
+                        ]}
+                    }}
                 ]}
-            }}
-        ]}.
+    end.
 
+manage_data(_Version, Context) ->
+    m_config:set_default_value(mod_paysub, stripe_api_key, <<>>, Context),
+    m_config:set_default_value(mod_paysub, stripe_webhook_secret, <<>>, Context).

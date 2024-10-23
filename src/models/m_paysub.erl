@@ -118,6 +118,8 @@
     sync_payment/3,
     delete_payment/3,
 
+    maybe_provision_user_subscriptions_async/2,
+    provision_user_subscriptions/2,
     provision_subscription/4,
     sync_subscription/4,
     update_subscription/3,
@@ -145,8 +147,6 @@
     has_moveable_maincontact_subs/2,
 
     products_add_prices/2,
-
-    install/1,
 
     notify_subscription/3
 ]).
@@ -610,7 +610,7 @@ billing_address(RscId, Context) ->
             {error, enoent};
         Id ->
             Addr = case m_rsc:p_no_acl(Id, <<"billing_country">>, Context) of
-                undefined ->
+                None when None =:= undefined; None =:= <<>> ->
                     #{
                         <<"street_1">> => m_rsc:p_no_acl(Id, <<"address_street_1">>, Context),
                         <<"street_2">> => m_rsc:p_no_acl(Id, <<"address_street_2">>, Context),
@@ -637,6 +637,7 @@ billing_address(RscId, Context) ->
             Addr2 = maps:fold(
                 fun
                     (K, undefined, Acc) -> Acc#{ K => <<>> };
+                    (<<"email">>, V, Acc) -> Acc#{ <<"email">> => V };
                     (K, V, Acc) -> Acc#{ K => z_html:unescape(V) }
                 end,
                 #{},
@@ -662,7 +663,12 @@ billing_name(Id, Context) ->
     end.
 
 billing_phone(Id, Context) ->
-    z_html:unescape(m_rsc:p_no_acl(Id, <<"phone">>, Context)).
+    case m_rsc:p_no_acl(Id, <<"billing_phone">>, Context) of
+        undefined ->
+            z_html:unescape(m_rsc:p_no_acl(Id, <<"phone">>, Context));
+        Phone ->
+            z_html:unescape(Phone)
+    end.
 
 
 %% @doc Sync the billing address from the customer record to resource. Copy the customer address
@@ -795,22 +801,26 @@ sync_billing_to_psp(PSP, CustId, Context) ->
             <<"psp">> := PSPBin,
             <<"psp_customer_id">> := PSPCustomerId,
             <<"rsc_id">> := Id,
+            <<"name">> := CustName,
+            <<"phone">> := CustPhone,
+            <<"email">> := CustEmail,
             <<"address_country">> := CustCountry,
             <<"address_street_1">> := CustStreet1,
             <<"address_street_2">> := CustStreet2,
-            <<"address_city">> := CustCity,
-            <<"address_state">> := CustState,
             <<"address_postcode">> := CustPostcode,
-            <<"email">> := CustEmail
+            <<"address_city">> := CustCity,
+            <<"address_state">> := CustState
         }} when is_binary(CustCountry), CustCountry =/= <<>> ->
             CustAddr = #{
+                <<"email">> => z_convert:to_binary(CustEmail),
+                <<"name">> => z_convert:to_binary(CustName),
+                <<"phone">> => z_convert:to_binary(CustPhone),
                 <<"country">> => z_convert:to_binary(CustCountry),
                 <<"street_1">> => z_convert:to_binary(CustStreet1),
                 <<"street_2">> => z_convert:to_binary(CustStreet2),
-                <<"city">> => z_convert:to_binary(CustCity),
-                <<"state">> => z_convert:to_binary(CustState),
                 <<"postcode">> => z_convert:to_binary(CustPostcode),
-                <<"email">> => z_convert:to_binary(CustEmail)
+                <<"city">> => z_convert:to_binary(CustCity),
+                <<"state">> => z_convert:to_binary(CustState)
             },
             case billing_address(Id, Context) of
                 {ok, CustAddr} ->
@@ -1157,7 +1167,8 @@ flush_rsc_id(RscId, Context) ->
     z_notifier:notify(#paysub_subscription_done{ rsc_id = RscId }, Context),
     ok.
 
-%% @doc Return the complete list of subscriptions for an user.
+%% @doc Return the complete list of subscriptions for a user. Sorted by descending
+%% period start (newest subscriptions first).
 -spec user_subscriptions(UserId, Context) -> {ok, list(map())} | {error, enoent} when
     UserId :: m_rsc:resource_id(),
     Context :: z:context().
@@ -1395,8 +1406,10 @@ user_payments(UserId0, Context) ->
     end.
 
 -spec checkout_status(CheckoutNr, Context) -> {ok, map()} | {error, term()} when
-    CheckoutNr :: binary(),
+    CheckoutNr :: binary() | undefined,
     Context :: z:context().
+checkout_status(undefined, _Context) ->
+    {error, enoent};
 checkout_status(CheckoutNr, Context) ->
     Result = case z_db:qmap_props_row("
         select status,
@@ -1937,25 +1950,6 @@ update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
         Context),
     update_customer_rsc_id_1(PSP, PspCustId, RscId, Context).
 
-
-%% @doc Sync the rsc_id to the PSP with an async task. This is needed after
-%% the rsc_id has been updated, for example after a merge of subscriptions.
--spec sync_customer_rsc_id(RscId, Context) -> ok | {error, enoent} when
-    RscId :: undefined | m_rsc:resource_id(),
-    Context :: z:context().
-sync_customer_rsc_id(RscId, Context) ->
-    Rs = z_db:q("
-        select psp, psp_customer_id
-        from paysub_customer
-        where rsc_id = $1",
-        [ RscId ],
-        Context),
-    lists:foreach(
-        fun({PSP, PspCustId}) ->
-            update_customer_psp(PSP, PspCustId, Context)
-        end,
-        Rs).
-
 %% @doc Set the resource id of a customer record, its subscriptions and checkouts.
 %% The rsc_id will be propagated to the PSP with an async task.
 -spec update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) -> ok | {error, enoent} when
@@ -1987,7 +1981,7 @@ update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) ->
     RscId :: undefined | m_rsc:resource_id(),
     Context :: z:context().
 update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
-    z_db:q("
+    N = z_db:q("
         update paysub_subscription
         set rsc_id = $3
         where psp = $1
@@ -1997,7 +1991,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
         Context),
     flush_rsc_id(RscId, Context),
     % Updating the customer might need update of metadata at the PSP
-    case z_db:q("
+    {Result, N2} = case z_db:q("
         update paysub_customer
         set rsc_id = $3
         where psp = $1
@@ -2007,7 +2001,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
         Context)
     of
         1 ->
-            z_db:q("
+            N1 = z_db:q("
                 update paysub_subscription
                 set rsc_id = $3
                 where psp = $1
@@ -2016,7 +2010,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
                 Context),
             % Update the customer at the PSP async with retries.
             update_customer_psp(PSP, PspCustId, Context),
-            ok;
+            {ok, N1};
         0 ->
             case z_db:q1("
                 select id
@@ -2026,10 +2020,35 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
                 [ PSP, PspCustId ],
                 Context)
             of
-                undefined -> {error, enoent};
-                _Id -> ok
+                undefined -> {{error, enoent}, 0};
+                _Id -> {ok, 0}
             end
-    end.
+    end,
+    if
+        N + N2 > 0 ->
+            maybe_provision_user_subscriptions_async(RscId, Context);
+        true ->
+            ok
+    end,
+    Result.
+
+%% @doc Sync the rsc_id to the PSP with an async task. This is needed after
+%% the rsc_id has been updated, for example after a merge of subscriptions.
+-spec sync_customer_rsc_id(RscId, Context) -> ok | {error, enoent} when
+    RscId :: undefined | m_rsc:resource_id(),
+    Context :: z:context().
+sync_customer_rsc_id(RscId, Context) ->
+    Rs = z_db:q("
+        select psp, psp_customer_id
+        from paysub_customer
+        where rsc_id = $1",
+        [ RscId ],
+        Context),
+    lists:foreach(
+        fun({PSP, PspCustId}) ->
+            update_customer_psp(PSP, PspCustId, Context)
+        end,
+        Rs).
 
 %% @doc Update the customer records at the PSP.
 -spec update_customer_psp(PSP, PspCustId, Context) -> ok | {error, enoent} when
@@ -2064,18 +2083,50 @@ sync_customers(PSP, Custs, Context) ->
     PSP :: atom() | binary(),
     Cust :: map(),
     Context :: z:context().
-sync_customer(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
+sync_customer(PSP, #{ psp_customer_id := CustId } = Cust0, Context) ->
     ?LOG_INFO(#{
         in => zotonic_mod_paysub,
         text => <<"PaySub: Updating customer">>,
         psp => PSP,
         psp_customer_id => CustId
     }),
-    z_db:transaction(
-        fun(Ctx) ->
-            sync_customer_trans(PSP, Cust, Ctx)
-        end,
-        Context).
+    Cust = Cust0#{ psp => PSP },
+    case is_customer_changed(PSP, Cust, Context) of
+        true ->
+            case z_db:transaction(
+                fun(Ctx) ->
+                    sync_customer_trans(PSP, Cust, Ctx)
+                end,
+                Context)
+            of
+                {ok, Action} ->
+                    {ok, New} = get_customer(PSP, CustId, Context),
+                    z_notifier:first(
+                        #paysub_customer{
+                            action = Action,
+                            customer = New
+                        }, Context),
+                    ok;
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            ok
+    end.
+
+is_customer_changed(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
+    case get_customer(PSP, CustId, Context) of
+        {ok, Current} ->
+            maps:fold(
+                fun
+                    (_K, _V, true) -> true;
+                    (K, V, false) -> maps:get(K, Current, undefined) =/= V
+                end,
+                false,
+                Cust);
+        {error, enoent} ->
+            true
+    end.
 
 sync_customer_trans(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
     case z_db:q1("
@@ -2088,10 +2139,9 @@ sync_customer_trans(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
         Context)
     of
         undefined ->
-            Cust1 = Cust#{ psp => PSP },
-            case z_db:insert(paysub_customer, Cust1, Context) of
+            case z_db:insert(paysub_customer, Cust, Context) of
                 {ok, _} ->
-                    ok;
+                    {ok, new};
                 {error, #error{ codename = unique_violation }} ->
                     Id = z_db:q1("
                         select id
@@ -2102,13 +2152,13 @@ sync_customer_trans(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
                         [ PSP, CustId ],
                         Context),
                     {ok, _} = z_db:update(paysub_customer, Id, Cust, Context),
-                    ok;
+                    {ok, update};
                 {error, _} = Error ->
                     Error
             end;
         Id ->
             {ok, _} = z_db:update(paysub_customer, Id, Cust, Context),
-            ok
+            {ok, update}
     end.
 
 -spec delete_customer(PSP, Id, Context) -> ok | {error, enoent} when
@@ -2116,6 +2166,7 @@ sync_customer_trans(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
     Id :: binary(),
     Context :: z:context().
 delete_customer(PSP, Id, Context) ->
+    R = get_customer(PSP, Id, Context),
     case z_db:q("
         delete from paysub_customer
         where psp = $1
@@ -2123,17 +2174,104 @@ delete_customer(PSP, Id, Context) ->
         [ PSP, Id ],
         Context)
     of
-        1 -> ok;
-        0 -> {error, enoent}
+        1 ->
+            case R of
+                {ok, Cust} ->
+                    z_notifier:notify(
+                        #paysub_customer{
+                            action = delete,
+                            customer = Cust
+                        }, Context);
+                {error, _} ->
+                    ok
+            end,
+            ok;
+        0 ->
+            {error, enoent}
     end.
+
+%% @doc Automatically provision all unprovisioned subscriptions for the rsc iff
+%% the configuration `mod_paysub.manual_provision_only` is not set.
+%% This is called after new subscriptions are received for customers that have their
+%% rsc_id set. Or after the rsc_id of a customer is set (and synced to the subscriptions).
+%% The provision is done async, in case the user has a recent checkout session, the
+%% automatic provision is delayed for 10 minutes, so that the checkout has some time to
+%% complete the provisioning.
+-spec maybe_provision_user_subscriptions_async(RscId, Context) -> ok when
+    RscId :: m_rsc:resource_id() | undefined,
+    Context :: z:context().
+maybe_provision_user_subscriptions_async(undefined, _Context) ->
+    ok;
+maybe_provision_user_subscriptions_async(RscId, Context) ->
+    case m_config:get_boolean(mod_paysub, manual_provision_only, Context) of
+        true ->
+            ok;
+        false ->
+            N = z_db:q1("
+                select count(*)
+                from paysub_subscription
+                where is_provisioned = false
+                  and rsc_id = $1",
+                [ RscId ],
+                Context),
+            if
+                N > 0 ->
+                    % If there is an active checkout for this user then wait a bit, as the
+                    % subscription is probably being added as a result of the checkout.
+                    Delay = case is_user_recent_checkout(RscId, Context) of
+                        true -> 10*60;
+                        false -> undefined
+                    end,
+                    z_pivot_rsc:insert_task_after(Delay, ?MODULE, provision_user_subscriptions, RscId, [RscId], Context),
+                    ok;
+                N =:= 0 ->
+                    ok
+            end
+    end.
+
+is_user_recent_checkout(RscId, Context) ->
+    Recent = z_datetime:prev_minute(calendar:universal_time(), 10),
+    N1 = z_db:q1("
+        select count(*)
+        from paysub_checkout
+        where rsc_id = $1
+          and modified > $2",
+        [ RscId, Recent ],
+        Context),
+    N1 > 0.
+
+%% @doc Provision all subscriptions of a user, this can be used if subscriptions
+%% are added outside of the checkout flow. This could be by means of the PSP API, merging
+%% resources, or by manually adding a subscription at the PSP.
+%% This is automatically called for all subscriptions that get a resource attached, unless
+%% the configuration key `mod_paysub.manual_provision_only` is set,
+-spec provision_user_subscriptions(UserId, Context) -> ok when
+    UserId :: m_rsc:resource_id() | undefined,
+    Context :: z:context().
+provision_user_subscriptions(undefined, _Context) ->
+    ok;
+provision_user_subscriptions(UserId, Context) ->
+    UnProvisioned = z_db:q("
+        select psp, psp_subscription_id
+        from paysub_subscription
+        where is_provisioned = false
+          and rsc_id = $1",
+        [ UserId ],
+        Context),
+    lists:foreach(
+        fun({PSP, PspSubId}) ->
+            provision_subscription(PSP, PspSubId, undefined, Context)
+        end,
+        UnProvisioned).
+
 
 %% @doc Provision a new subscription. The subscription is already added to
 %% the database. Sends a notification that a new subscription has been
-%% created.
+%% created. This is called at the end of a completed checkout.
 -spec provision_subscription(PSP, PspSubId, CheckoutNr, Context) -> ok | {error, Reason} when
     PSP :: binary() | atom(),
     PspSubId :: binary(),
-    CheckoutNr :: binary(),
+    CheckoutNr :: binary() | undefined,
     Context :: z:context(),
     Reason :: term().
 provision_subscription(PSP, PspSubId, CheckoutNr, Context) ->
@@ -2156,7 +2294,7 @@ provision_subscription(PSP, PspSubId, CheckoutNr, Context) ->
                     [Sub1] = subscription_add_prices([Sub], Context),
                     Checkout = case checkout_status(CheckoutNr, Context) of
                         {ok, CheckoutStatus} -> CheckoutStatus;
-                        {error, _} -> #{}
+                        {error, _} -> undefined
                     end,
                     z_notifier:first(
                         #paysub_subscription{
@@ -2303,14 +2441,19 @@ notify_subscription(SubId, IsRetry, Context) ->
         Context)
     of
         ok ->
-            RscId = z_db:q1("
-                select rsc_id
+            {RscId, WasProvisioned} = z_db:q_row("
+                select rsc_id, is_provisioned
                 from paysub_subscription sub
                 where sub.id = $1",
                 [ SubId ],
                 Context),
             flush_rsc_id(RscId, Context),
-            ok;
+            case WasProvisioned of
+                true -> ok;
+                false when is_integer(RscId) ->
+                    maybe_provision_user_subscriptions_async(RscId, Context);
+                false -> ok
+            end;
         {error, retry} when IsRetry ->
             % Could be a race condition where the customer record is in transit
             % whilst the subscription is created.
@@ -2378,49 +2521,66 @@ sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, NewPric
     {ok, SubId}.
 
 update_subscription_1(PSP, PspSubId, Sub, Context) ->
-    case z_db:q1("
-        select id
-        from paysub_subscription
-        where psp = $1
-          and psp_subscription_id = $2
-        for update",
-        [ PSP, PspSubId ],
-        Context)
-    of
+    PspCustId = maps:get(psp_customer_id, Sub, undefined),
+    RscId = case maps:get(rsc_id, Sub, undefined) of
         undefined ->
-            PspCustId = maps:get(psp_customer_id, Sub, undefined),
-            RscId = z_db:q1("
+            z_db:q1("
                 select rsc_id
                 from paysub_customer
                 where psp = $1
                   and psp_customer_id = $2",
                 [ PSP, PspCustId],
-                Context),
-            Sub1 = Sub#{
-                psp => PSP,
-                rsc_id => RscId,
-                modified => calendar:universal_time()
-            },
-            case z_db:insert(paysub_subscription, Sub1, Context) of
-                {ok, _} = Ok ->
-                    Ok;
-                {error, #error{ codename = unique_violation }} ->
-                    Id = z_db:q1("
-                        select id
-                        from paysub_subscription
-                        where psp = $1
-                          and psp_subscription_id = $2
-                        for update",
-                        [ PSP, PspSubId ],
-                        Context),
-                {ok, _} = z_db:update(paysub_subscription, Id, Sub1, Context),
-                {ok, Id}
-            end;
-        Id ->
-            Sub1 = Sub#{ modified => calendar:universal_time() },
-            {ok, _} = z_db:update(paysub_subscription, Id, Sub1, Context),
-            {ok, Id}
-    end.
+                Context);
+        RId when is_integer(RId) ->
+            RId
+    end,
+    SubId = z_db:q1("
+        insert into paysub_subscription (
+            rsc_id, psp, psp_subscription_id, psp_customer_id,
+            status,
+            period_start, period_end, cancel_at, canceled_at,
+            started_at, ended_at, trial_start, trial_end,
+            modified
+        ) values (
+            $1, $2, $3, $4,
+            $5,
+            $6, $7, $8, $9,
+            $10, $11, $12, $13,
+            $14
+        )
+        on conflict(psp, psp_subscription_id)
+        do update
+        set rsc_id = excluded.rsc_id,
+            status = excluded.status,
+            period_start = excluded.period_start,
+            period_end = excluded.period_end,
+            cancel_at = excluded.cancel_at,
+            canceled_at = excluded.canceled_at,
+            started_at = excluded.started_at,
+            ended_at = excluded.ended_at,
+            trial_start = excluded.trial_start,
+            trial_end = excluded.trial_end,
+            modified = excluded.modified
+        returning id
+        ",
+        [
+            RscId,
+            PSP,
+            PspSubId,
+            PspCustId,
+            maps:get(status, Sub),
+            maps:get(period_start, Sub),
+            maps:get(period_end, Sub),
+            maps:get(cancel_at, Sub),
+            maps:get(canceled_at, Sub),
+            maps:get(started_at, Sub),
+            maps:get(ended_at, Sub),
+            maps:get(trial_start, Sub),
+            maps:get(trial_end, Sub),
+            calendar:universal_time()
+        ],
+        Context),
+    {ok, SubId}.
 
 
 -spec delete_subscription(PSP, PspSubId, Context) -> ok | {error, enoent} when
@@ -2654,431 +2814,3 @@ moveable_maincontact_psps(Id, Context) ->
             [ PSP || {PSP} <- PSPs ]
     end.
 
-
--spec install(z:context()) -> ok.
-install(Context) ->
-    case z_db:table_exists(paysub_checkout, Context) of
-        false ->
-            ok = install_tables(Context),
-            z_db:flush(Context),
-            ok;
-        true ->
-            case z_db:table_exists(paysub_payment, Context) of
-                false ->
-                    [] = z_db:q("
-                        create table paysub_payment (
-                            id serial not null,
-                            psp character varying(32) not null,
-                            psp_payment_id character varying(128) not null,
-                            psp_customer_id character varying(128),
-                            psp_invoice_id character varying(128),
-                            currency character varying(16) not null default 'EUR'::character varying,
-                            amount integer not null,
-                            amount_received integer not null,
-
-                            name character varying(255),
-                            email character varying(255),
-                            phone character varying(255),
-
-                            status character varying(32) not null default ''::character varying,
-                            description character varying (300),
-
-                            props_json jsonb,
-                            created timestamp with time zone NOT NULL DEFAULT now(),
-                            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-                            constraint paysub_payment_pkey primary key (id),
-                            constraint paysub_payment_psp_payment_intent_id unique (psp, psp_payment_id)
-                        )", Context),
-                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_psp_customer_key ON paysub_payment (psp, psp_customer_id)", Context),
-                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_modified_key ON paysub_payment (modified)", Context),
-                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_created_key ON paysub_payment (created)", Context),
-                    z_db:flush(Context);
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_customer, phone, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_customer
-                            add column address_street_1 character varying(255),
-                            add column address_street_2 character varying(255),
-                            add column address_city character varying(255),
-                            add column address_state character varying(255),
-                            add column address_postcode character varying(255),
-                            add column phone character varying(255)
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_subscription, is_provisioned, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_subscription
-                            add column is_provisioned boolean not null default false
-                        ", Context),
-                    z_db:flush(Context),
-                    z_db:q("update paysub_subscription set is_provisioned = true", Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_checkout, psp_customer_id, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_checkout
-                            add column psp_customer_id character varying(128)
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_checkout, survey_answer_id, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_checkout
-                            add column survey_answer_id bigint
-                        ", Context),
-                    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_checkout_psp_psp_customer_id_key ON paysub_checkout (psp, psp_customer_id)", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_checkout, survey_id, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_checkout
-                            add column survey_id integer
-                        ", Context),
-                    [] = z_db:q("CREATE INDEX paysub_checkout_survey_id_key ON paysub_checkout (survey_id, survey_answer_id)", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_checkout, psp_payment_id, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_checkout
-                            add column psp_payment_id character varying(128)
-                        ", Context),
-                    [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_payment_id_key ON paysub_checkout (psp, psp_payment_id)", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_product, is_use_maincontact, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_product
-                            add column is_use_maincontact boolean not null default false
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_checkout, requestor_id, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_checkout
-                            add column requestor_id integer
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_price, billing_scheme, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_price
-                            add column billing_scheme character varying(32) not null default 'per_unit',
-                            alter column amount drop not null
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_price, key, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_price
-                            add column key character varying(128) not null default ''
-                        ", Context),
-                    [] = z_db:q("CREATE INDEX paysub_price_key_key ON paysub_price (key)", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_subscription_item, quantity, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_subscription_item
-                            add column quantity integer
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end,
-            case z_db:column_exists(paysub_subscription_item, psp_item_id, Context) of
-                false ->
-                    [] = z_db:q("
-                            alter table paysub_subscription_item
-                            add column psp_item_id character varying(128) not null default ''
-                        ", Context),
-                    z_db:flush(Context),
-                    ok;
-                true ->
-                    ok
-            end
-    end.
-
-install_tables(Context) ->
-    [] = z_db:q("
-        create table paysub_checkout (
-            id serial not null,
-            rsc_id integer,
-            requestor_id integer,
-            survey_id integer,
-            survey_answer_id bigint,
-            nr character varying(32) not null,
-            psp character varying(32) not null,
-            psp_checkout_id character varying(128),
-            psp_payment_id character varying(128),
-            psp_customer_id character varying(128),
-            mode character varying(32) not null,
-            status character varying(32) not null default 'open'::character varying,
-            payment_status character varying(32) not null default 'open'::character varying,
-            currency character varying(16),
-            amount integer,
-            props_json jsonb,
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_checkout_pkey primary key (id),
-            constraint paysub_checkout_nr unique (nr),
-            constraint paysub_checkout_psp_id unique (psp, psp_checkout_id),
-            constraint fk_paysub_checkout_rsc_id foreign key (rsc_id)
-                references rsc (id)
-                on update cascade
-                on delete set null
-        )", Context),
-    [] = z_db:q("CREATE INDEX fki_paysub_checkout_rsc_id ON paysub_checkout (rsc_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_checkout_created_key ON paysub_checkout (created)", Context),
-    [] = z_db:q("CREATE INDEX paysub_checkout_modified_key ON paysub_checkout (modified)", Context),
-    [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_customer_id_key ON paysub_checkout (psp, psp_customer_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_checkout_psp_psp_payment_id_key ON paysub_checkout (psp, psp_payment_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_checkout_survey_id_key ON paysub_checkout (survey_id, survey_answer_id)", Context),
-
-    [] = z_db:q("
-        create table paysub_product (
-            id serial not null,
-            is_active boolean not null default true,
-            user_group_id int,
-            is_use_maincontact boolean not null default false,
-            name character varying(128) not null,
-            psp character varying(32) not null,
-            psp_product_id character varying(128) not null,
-            psp_default_price_id character varying(128),
-            props_json jsonb,
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_product_pkey primary key (id),
-            constraint paysub_product_psp_product_id unique (psp, psp_product_id)
-        )", Context),
-
-    [] = z_db:q("CREATE INDEX paysub_product_name_key ON paysub_product (name)", Context),
-
-    [] = z_db:q("
-        create table paysub_price (
-            id serial not null,
-            is_active boolean not null default true,
-            name character varying(128) not null,
-            key character varying(128) not null default '',
-            psp character varying(32) not null,
-            psp_price_id character varying(128) not null,
-            psp_product_id character varying(128) not null,
-            props_json jsonb,
-            currency character varying(16) not null default 'EUR'::character varying,
-            amount integer,
-            billing_scheme character varying(32) not null default 'per_unit',
-            is_recurring boolean not null default false,
-            recurring_period character varying(16),
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_price_pkey primary key (id),
-            constraint paysub_price_psp_price_id unique (psp, psp_price_id)
-        )", Context),
-
-    [] = z_db:q("CREATE INDEX paysub_price_name_key ON paysub_price (name)", Context),
-    [] = z_db:q("CREATE INDEX paysub_price_key_key ON paysub_price (key)", Context),
-    [] = z_db:q("CREATE INDEX paysub_price_psp_product_key ON paysub_price (psp, psp_product_id)", Context),
-    [] = z_db:q("CREATE INDEX paysub_price_created_key ON paysub_price (created)", Context),
-    [] = z_db:q("CREATE INDEX paysub_price_modified_key ON paysub_price (modified)", Context),
-
-    [] = z_db:q("
-        create table paysub_subscription (
-            id serial not null,
-            rsc_id integer,
-            psp character varying(32) not null,
-            psp_subscription_id character varying(128) not null,
-            psp_customer_id character varying(128) not null,
-            is_provisioned boolean not null default false,
-            status character varying(32) not null default ''::character varying,
-
-            period_start timestamp with time zone,
-            period_end timestamp with time zone,
-            cancel_at timestamp with time zone,
-            canceled_at timestamp with time zone,
-            started_at timestamp with time zone,
-            ended_at timestamp with time zone,
-            trial_start timestamp with time zone,
-            trial_end timestamp with time zone,
-
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_pkey primary key (id),
-            constraint paysub_psp_subscription_id unique (psp, psp_subscription_id)
-        )", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_psp_customer_key ON paysub_subscription (psp, psp_customer_id)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_status_key ON paysub_subscription (status)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_started_at_key ON paysub_subscription (started_at)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_ended_at_key ON paysub_subscription (ended_at)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_period_start_key ON paysub_subscription (period_start)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_period_end_at_key ON paysub_subscription (period_end)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_modified_key ON paysub_subscription (modified)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_created_key ON paysub_subscription (created)", Context),
-
-    [] = z_db:q("
-        create table paysub_subscription_item (
-            subscription_id int not null,
-            psp character varying(32) not null,
-            psp_item_id character varying(128) not null default '',
-            psp_price_id character varying(128) not null,
-            quantity integer,
-            created timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_item_pkey primary key (subscription_id, psp, psp_price_id),
-            constraint fk_paysub_subscription_item_subscription_id foreign key (subscription_id)
-                references paysub_subscription (id)
-                on update cascade
-                on delete cascade
-        )", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS fki_paysub_subscription_item_subscription_id ON paysub_subscription_item (subscription_id)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_subscription_item_psp_psp_price_id_key ON paysub_subscription_item (psp, psp_price_id)", Context),
-
-    [] = z_db:q("
-        create table paysub_customer (
-            id serial not null,
-            rsc_id integer,
-            psp character varying(32) not null,
-            psp_customer_id character varying(128) not null,
-            name character varying(255),
-            email character varying(255),
-            pref_language character varying(16),
-            address_country character varying(16),
-            address_street_1 character varying(255),
-            address_street_2 character varying(255),
-            address_city character varying(255),
-            address_state character varying(255),
-            address_postcode character varying(255),
-            phone character varying(255),
-
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_customer_pkey primary key (id),
-            constraint paysub_customer_psp_customer_id unique (psp, psp_customer_id),
-            constraint fk_paysub_customer_rsc_id foreign key (rsc_id)
-                references rsc (id)
-                on update cascade
-                on delete set null
-        )", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS fki_paysub_customer_rsc_id ON paysub_customer (rsc_id)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_customer_modified_key ON paysub_customer (modified)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_customer_created_key ON paysub_customer (created)", Context),
-
-    % payment_status is one of: draft, open, paid, uncollectible, or void
-    [] = z_db:q("
-        create table paysub_invoice (
-            id serial not null,
-            psp character varying(32) not null,
-            psp_invoice_id character varying(128) not null,
-            psp_customer_id character varying(128) not null,
-            currency character varying(16) not null default 'EUR'::character varying,
-            amount_due integer not null,
-            amount_paid integer not null,
-            amount_remaining integer not null,
-            total integer not null,
-
-            collection_method character varying(32) not null default 'charge_automatically'::character varying,
-            is_payment_attempted boolean not null default false,
-            payment_method character varying(128),
-            payment_status character varying(32) not null default ''::character varying,
-            period_start timestamp with time zone,
-            period_end timestamp with time zone,
-
-            name character varying(255),
-            email character varying(255),
-            address_country character varying(16),
-            address_street_1 character varying(255),
-            address_street_2 character varying(255),
-            address_city character varying(255),
-            address_state character varying(255),
-            address_postcode character varying(255),
-
-            props_json jsonb,
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_invoice_pkey primary key (id),
-            constraint paysub_invoice_psp_invoice_id unique (psp, psp_invoice_id)
-        )", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_invoice_psp_customer_key ON paysub_invoice (psp, psp_customer_id)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_invoice_modified_key ON paysub_invoice (modified)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_invoice_created_key ON paysub_invoice (created)", Context),
-
-    % status is one of: requires_payment_method, requires_confirmation, requires_action, processing,
-    % requires_capture, canceled, or succeeded
-    [] = z_db:q("
-        create table paysub_payment (
-            id serial not null,
-            psp character varying(32) not null,
-            psp_payment_id character varying(128) not null,
-            psp_customer_id character varying(128),
-            psp_invoice_id character varying(128),
-            currency character varying(16) not null default 'EUR'::character varying,
-            amount integer not null,
-            amount_received integer not null,
-
-            name character varying(255),
-            email character varying(255),
-            phone character varying(255),
-
-            status character varying(32) not null default ''::character varying,
-            description character varying (300),
-
-            props_json jsonb,
-            created timestamp with time zone NOT NULL DEFAULT now(),
-            modified timestamp with time zone NOT NULL DEFAULT now(),
-
-            constraint paysub_payment_pkey primary key (id),
-            constraint paysub_payment_psp_payment_intent_id unique (psp, psp_payment_id)
-        )", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_psp_customer_key ON paysub_payment (psp, psp_customer_id)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_modified_key ON paysub_payment (modified)", Context),
-    [] = z_db:q("CREATE INDEX IF NOT EXISTS paysub_payment_created_key ON paysub_payment (created)", Context),
-
-    ok.

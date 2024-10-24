@@ -834,7 +834,8 @@ sync_product(PspProdId, Context) ->
     Context :: z:context().
 sync_products(Context) ->
     Payload = #{
-        limit => 50
+        limit => 50,
+        type => <<"service">>
     },
     Path = [ <<"products">> ],
     case fetch_all(

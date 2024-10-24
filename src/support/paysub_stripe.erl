@@ -293,6 +293,7 @@ checkout_session_create(Args, Context) ->
                 admin_url => AdminUrl,
                 survey_answer_id => proplists:get_value(survey_answer_id, Args)
             },
+            TaxIdCollection = z_convert:to_bool(proplists:get_value(is_tax_id_collection, Args)),
             Payload = #{
                 cancel_url => CancelUrl,
                 success_url => DoneUrl,
@@ -301,7 +302,10 @@ checkout_session_create(Args, Context) ->
                 allow_promotion_codes => true,
                 metadata => CheckoutMetadata1,
                 line_items => LineItems,
-                locale => z_context:language(Context)
+                locale => z_context:language(Context),
+                tax_id_collection => #{
+                    enabled => TaxIdCollection
+                }
             },
             IsBillingAddressCollection = z_convert:to_bool(proplists:get_value(is_billing_address_collection, Args, true)),
             Payload1 = case z_convert:to_binary(proplists:get_value(email, Args)) of

@@ -52,6 +52,7 @@
     update_billing_address/2,
     update_customer_task/2,
 
+    sync_product/2,
     sync_products/1,
     sync_prices/1,
 
@@ -804,6 +805,28 @@ update_customer_task(PSPCustomerId, Context) ->
             ok
     end.
 
+
+%% @doc Sync all products in Stripe with products here.
+-spec sync_product(PspProdId, Context) -> ok | {error, term()} when
+    PspProdId :: binary(),
+    Context :: z:context().
+sync_product(PspProdId, Context) ->
+    Path = [ <<"products">>, PspProdId ],
+    case paysub_stripe_api:fetch(get, Path, #{}, Context) of
+        {ok, Prod} ->
+            Prod1 = stripe_prod(Prod, Context),
+            ok = m_paysub:sync_products(stripe, [ Prod1 ], Context),
+            ?LOG_INFO(#{
+                in => zotonic_mod_paysub,
+                text => <<"Stripe: sync single product">>,
+                result => ok,
+                psp => stripe,
+                product_id => PspProdId
+            }),
+            ok;
+        {error, _} = Error ->
+            Error
+    end.
 
 %% @doc Sync all products in Stripe with products here.
 -spec sync_products(Context) -> ok | {error, term()} when

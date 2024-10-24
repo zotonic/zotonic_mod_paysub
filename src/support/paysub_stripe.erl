@@ -329,7 +329,8 @@ checkout_session_create(Args, Context) ->
                     maps:remove(customer_email, Payload1#{
                         customer => CustId,
                         customer_update => #{
-                            address => auto
+                            address => auto,
+                            name => auto
                         }
                     });
                 {error, enoent} when is_integer(SubscriberId) ->

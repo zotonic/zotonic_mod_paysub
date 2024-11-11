@@ -2508,13 +2508,13 @@ sync_subscription_trans(PSP, #{ psp_subscription_id := PspSubId } = Sub, NewPric
             NewQuantity = maps:get(quantity, Price, 1),
             z_db:q("
                 update paysub_subscription_item
-                set quantity = $5
+                set quantity = $5,
+                    psp_price_id = $4
                 where subscription_id = $1
                   and psp = $2
-                  and psp_price_id = $3
-                  and psp_item_id = $4
-                  and quantity <> $5",
-                [ SubId, PSP, PriceId, ItemId, NewQuantity ],
+                  and psp_item_id = $3
+                  and (psp_price_id <> $4 or quantity <> $5)",
+                [ SubId, PSP, ItemId, PriceId, NewQuantity ],
                 Context)
         end,
         NewPrices),

@@ -1204,7 +1204,7 @@ sync_subscription(SubId, Context) when is_binary(SubId) ->
         {error, _} = Error ->
             Error
     end;
-sync_subscription(Sub, Context) ->
+sync_subscription(Sub, Context) when is_map(Sub) ->
     SSub = stripe_subscription(Sub, Context),
     PriceItems = stripe_subscription_prices(Sub),
     ok = m_paysub:sync_subscription(stripe, SSub, PriceItems, Context),

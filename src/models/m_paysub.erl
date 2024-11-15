@@ -1826,7 +1826,8 @@ delete_price(PSP, PriceId, Context) ->
         0 -> {error, enoent}
     end.
 
-%% @doc Get a price record.
+%% @doc Get a price record. First check on the price key, then
+%% on the price PSP id.
 -spec get_price(PSP, PriceIdOrName, Context) -> Result when
     PSP :: atom() | binary(),
     PriceIdOrName :: undefined | binary(),
@@ -1836,8 +1837,8 @@ get_price(_PSP, undefined, _Context) ->
     {error, enoent};
 get_price(_PSP, <<>>, _Context) ->
     {error, enoent};
-get_price(PSP, PriceIdOrName, Context) when is_binary(PriceIdOrName) ->
-    z_db:qmap_props_row("
+get_price(PSP, PriceIdOrKey, Context) when is_binary(PriceIdOrKey) ->
+    case z_db:qmap_props_row("
         select price.*,
                prod.is_use_maincontact,
                prod.name as product_name
@@ -1845,9 +1846,25 @@ get_price(PSP, PriceIdOrName, Context) when is_binary(PriceIdOrName) ->
             left join paysub_product prod
             on prod.psp = price.psp
             and prod.psp_product_id = price.psp_product_id
-        where (price.psp_price_id = $1 or price.name = $1 or price.key = $1)
+        where price.key = $1
           and price.psp = $2
-        ", [ PriceIdOrName, PSP ], Context).
+        ", [ PriceIdOrKey, PSP ], Context)
+    of
+        {ok, _} = Ok ->
+            Ok;
+        {error, enoent} ->
+            z_db:qmap_props_row("
+                select price.*,
+                       prod.is_use_maincontact,
+                       prod.name as product_name
+                from paysub_price price
+                    left join paysub_product prod
+                    on prod.psp = price.psp
+                    and prod.psp_product_id = price.psp_product_id
+                where price.psp_price_id = $1
+                  and price.psp = $2
+                ", [ PriceIdOrKey, PSP ], Context)
+    end.
 
 
 %% @doc Place all found payment (intents) in the database. Do not delete any payment.

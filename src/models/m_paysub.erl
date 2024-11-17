@@ -1306,7 +1306,7 @@ get_subscription(PSP, SubId, Context) ->
             on sub.psp = cust.psp
             and sub.psp_customer_id = cust.psp_customer_id
         where sub.psp = $1
-          and sub.psp_customer_id = $2",
+          and sub.psp_subscription_id = $2",
         [ PSP, SubId ],
         Context)
     of

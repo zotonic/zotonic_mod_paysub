@@ -294,7 +294,6 @@ checkout_session_create(Args, Context) ->
                 admin_url => AdminUrl,
                 survey_answer_id => proplists:get_value(survey_answer_id, Args)
             },
-            TaxIdCollection = z_convert:to_bool(proplists:get_value(is_tax_id_collection, Args)),
             Payload = #{
                 cancel_url => CancelUrl,
                 success_url => DoneUrl,
@@ -303,30 +302,41 @@ checkout_session_create(Args, Context) ->
                 allow_promotion_codes => true,
                 metadata => CheckoutMetadata1,
                 line_items => LineItems,
-                locale => z_context:language(Context),
-                tax_id_collection => #{
-                    enabled => TaxIdCollection
-                }
+                locale => z_context:language(Context)
             },
-            IsBillingAddressCollection = z_convert:to_bool(proplists:get_value(is_billing_address_collection, Args, true)),
-            Payload1 = case z_convert:to_binary(proplists:get_value(email, Args)) of
-                <<>> ->
-                    Payload;
-                Email ->
+            IsTaxIdCollection = z_convert:to_bool(proplists:get_value(is_tax_id_collection, Args)),
+            Payload1 = case IsTaxIdCollection of
+                true ->
                     Payload#{
+                        automatic_tax => #{
+                            enabled => true
+                        },
+                        tax_id_collection => #{
+                            enabled => true
+                        }
+                    };
+                false ->
+                    Payload
+            end,
+            Payload2 = case z_convert:to_binary(proplists:get_value(email, Args)) of
+                <<>> ->
+                    Payload1;
+                Email ->
+                    Payload1#{
                         customer_email => Email
                     }
             end,
+            IsBillingAddressCollection = z_convert:to_bool(proplists:get_value(is_billing_address_collection, Args, true)),
             BaseSub = case z_convert:to_integer(proplists:get_value(trial_days, Args, 0)) of
                 N when is_integer(N), N >= 1 -> #{ trial_period_days => N };
                 _ -> #{}
             end,
-            Payload2 = case m_paysub:get_customer(stripe, SubscriberId, Context) of
+            Payload3 = case m_paysub:get_customer(stripe, SubscriberId, Context) of
                 {ok, #{
                     <<"psp_customer_id">> := CustId
                 }} when is_binary(CustId) ->
                     % Only customer or customer_email can be used.
-                    maps:remove(customer_email, Payload1#{
+                    maps:remove(customer_email, Payload2#{
                         customer => CustId,
                         customer_update => #{
                             address => auto,
@@ -334,17 +344,17 @@ checkout_session_create(Args, Context) ->
                         }
                     });
                 {error, enoent} when is_integer(SubscriberId) ->
-                    PE1 = case Payload1 of
+                    PE1 = case Payload2 of
                         #{
                             customer_email := _
                         } ->
-                            Payload1;
+                            Payload2;
                         _ ->
                             case m_rsc:p_no_acl(SubscriberId, email_raw, Context) of
                                 undefined ->
-                                    Payload1;
+                                    Payload2;
                                 UserEmail ->
-                                    Payload1#{
+                                    Payload2#{
                                         customer_email => UserEmail
                                     }
                             end
@@ -384,7 +394,7 @@ checkout_session_create(Args, Context) ->
                             }
                     end;
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= payment ->
-                    Payload1#{
+                    Payload2#{
                         customer_creation => if_required,
                         billing_address_collection => auto,
                         consent_collection => #{
@@ -399,7 +409,7 @@ checkout_session_create(Args, Context) ->
                         }
                     };
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= subscription ->
-                    Payload1#{
+                    Payload2#{
                         billing_address_collection =>
                             case IsBillingAddressCollection of
                                 true -> required;
@@ -411,14 +421,14 @@ checkout_session_create(Args, Context) ->
                         subscription_data => BaseSub
                     }
             end,
-            Payload3 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
-                <<>> -> Payload2;
+            Payload4 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
+                <<>> -> Payload3;
                 RequestedCurrency ->
-                    Payload2#{
+                    Payload3#{
                         currency => RequestedCurrency
                     }
             end,
-            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload3, Context) of
+            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload4, Context) of
                 {ok, #{
                     <<"url">> := Url,
                     <<"id">> := PspCheckoutId,

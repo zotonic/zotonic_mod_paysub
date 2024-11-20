@@ -302,7 +302,10 @@ checkout_session_create(Args, Context) ->
                 allow_promotion_codes => true,
                 metadata => CheckoutMetadata1,
                 line_items => LineItems,
-                locale => z_context:language(Context)
+                locale => z_context:language(Context),
+                payment_method_data => #{
+                    allow_redisplay => <<"always">>
+                }
             },
             IsTaxIdCollection = z_convert:to_bool(proplists:get_value(is_tax_id_collection, Args)),
             Payload1 = case IsTaxIdCollection of

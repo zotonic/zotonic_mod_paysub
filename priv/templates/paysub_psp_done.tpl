@@ -1,4 +1,4 @@
-{% extends "page.tpl" %}
+{% extends "base.tpl" %}
 
 {% block html_head_extra %}
 {% lib

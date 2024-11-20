@@ -336,13 +336,27 @@ checkout_session_create(Args, Context) ->
                     <<"psp_customer_id">> := CustId
                 }} when is_binary(CustId) ->
                     % Only customer or customer_email can be used.
-                    maps:remove(customer_email, Payload2#{
+                    PE1 = maps:remove(customer_email, Payload2#{
                         customer => CustId,
                         customer_update => #{
                             address => auto,
                             name => auto
                         }
-                    });
+                    }),
+                    case Mode of
+                        subscription ->
+                            PE1#{
+                                billing_address_collection =>
+                                    case IsBillingAddressCollection of
+                                        true -> required;
+                                        false -> auto
+                                    end
+                            };
+                        payment ->
+                            PE1#{
+                                billing_address_collection => auto
+                            }
+                    end;
                 {error, enoent} when is_integer(SubscriberId) ->
                     PE1 = case Payload2 of
                         #{

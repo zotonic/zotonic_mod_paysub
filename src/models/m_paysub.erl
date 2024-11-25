@@ -2055,17 +2055,22 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
     RscId :: undefined | m_rsc:resource_id(),
     Context :: z:context().
 sync_customer_rsc_id(RscId, Context) ->
-    Rs = z_db:q("
-        select psp, psp_customer_id
-        from paysub_customer
-        where rsc_id = $1",
-        [ RscId ],
-        Context),
-    lists:foreach(
-        fun({PSP, PspCustId}) ->
-            update_customer_psp(PSP, PspCustId, Context)
-        end,
-        Rs).
+    case RscId =:= undefined orelse m_rsc:exists(RscId, Context) of
+        true ->
+            Rs = z_db:q("
+                select psp, psp_customer_id
+                from paysub_customer
+                where rsc_id = $1",
+                [ RscId ],
+                Context),
+            lists:foreach(
+                fun({PSP, PspCustId}) ->
+                    update_customer_psp(PSP, PspCustId, Context)
+                end,
+                Rs);
+        false ->
+            {error, enoent}
+    end.
 
 %% @doc Update the customer records at the PSP.
 -spec update_customer_psp(PSP, PspCustId, Context) -> ok | {error, enoent} when

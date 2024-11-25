@@ -1228,6 +1228,9 @@ sync_subscription(SubId, Context) when is_binary(SubId) ->
                 {error, _} = Error ->
                     Error
             end;
+        {error, enoent} ->
+            % Subscription has been deleted
+            m_paysub:delete_subscription(stripe, SubId, Context);
         {error, _} = Error ->
             Error
     end;

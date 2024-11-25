@@ -1360,10 +1360,8 @@ sync_subscriptions(Context) ->
                 Subs),
             % Force manual sync of all subscriptions not in the list
             SubIds = lists:foldl(
-                fun(#{ <<"psp_subscription_id">> := PspSubId }, Acc) ->
-                    Acc#{
-                        PspSubId => true
-                    }
+                fun(#{ <<"id">> := PspSubId }, Acc) ->
+                    Acc#{ PspSubId => true }
                 end,
                 #{},
                 Subs),

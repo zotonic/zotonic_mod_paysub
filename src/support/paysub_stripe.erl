@@ -1357,7 +1357,31 @@ sync_subscriptions(Context) ->
                 fun(Sub) ->
                     sync_subscription(Sub, Context)
                 end,
-                Subs);
+                Subs),
+            % Force manual sync of all subscriptions not in the list
+            SubIds = lists:foldl(
+                fun(#{ <<"psp_subscription_id">> := PspSubId }, Acc) ->
+                    Acc#{
+                        PspSubId => true
+                    }
+                end,
+                #{},
+                Subs),
+            CurrentSubIds = z_db:q("
+                select psp_subscription_id
+                from paysub_subscription
+                where psp = 'stripe'
+                ", Context),
+            lists:foreach(
+                fun({PspSubId}) ->
+                    case maps:is_key(PspSubId, SubIds) of
+                        true -> ok;
+                        false ->
+                            UniqueKey = <<"paysub-stripe-", PspSubId/binary>>,
+                            z_pivot_rsc:insert_task_after(5, paysub_stripe, sync_task, UniqueKey, [ subscription, PspSubId ], Context)
+                    end
+                end,
+                CurrentSubIds);
         {error, _} = Error ->
             Error
     end.

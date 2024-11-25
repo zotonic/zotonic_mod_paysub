@@ -1471,7 +1471,10 @@ stripe_invoice(#{
         } = Lines
     } = Inv, Context) ->
     Path = binary:split(LineUrl, <<"/">>, [ global ]),
-    {ok, AllLines} = fetch_all({ok, Lines}, Path, #{}, [], Context),
+    AllLines = case fetch_all({ok, Lines}, Path, #{}, [], Context) of
+        {ok, Ls} -> Ls;
+        {error, _} -> []
+    end,
     InvItems = lists:map(
         fun(#{
             <<"description">> := ItemDescription,

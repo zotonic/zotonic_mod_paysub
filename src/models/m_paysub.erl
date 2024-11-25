@@ -2107,7 +2107,7 @@ sync_customer(PSP, #{ psp_customer_id := CustId } = Cust0, Context) ->
         psp => PSP,
         psp_customer_id => CustId
     }),
-    Cust = Cust0#{ psp => PSP },
+    Cust = fix_country(Cust0#{ psp => PSP }),
     case is_customer_changed(PSP, Cust, Context) of
         true ->
             case z_db:transaction(
@@ -2130,6 +2130,15 @@ sync_customer(PSP, #{ psp_customer_id := CustId } = Cust0, Context) ->
         false ->
             ok
     end.
+
+fix_country(#{ address_country := Country } = Cust) when is_binary(Country) ->
+    Country1 = case l10n_country2iso:country2iso(Country) of
+        undefined -> z_string:truncatechars(Country, 16, <<>>);
+        Iso -> Iso
+    end,
+    Cust#{ address_country => Country1 };
+fix_country(Cust) ->
+    Cust.
 
 is_customer_changed(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
     case get_customer(PSP, CustId, Context) of

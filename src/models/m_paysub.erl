@@ -1956,16 +1956,21 @@ delete_payment(PSP, PaymentId, Context) ->
     RscId :: undefined | m_rsc:resource_id(),
     Context :: z:context().
 update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
-    z_db:q("
-        update paysub_checkout
-        set rsc_id = $3
-        where psp = $1
-          and psp_customer_id = $2
-          and ( rsc_id <> $3
-              or rsc_id is null)",
-        [ PSP, PspCustId, RscId ],
-        Context),
-    update_customer_rsc_id_1(PSP, PspCustId, RscId, Context).
+    case RscId =:= undefined orelse m_rsc:exists(RscId, Context) of
+        true ->
+            z_db:q("
+                update paysub_checkout
+                set rsc_id = $3
+                where psp = $1
+                  and psp_customer_id = $2
+                  and ( rsc_id <> $3
+                      or rsc_id is null)",
+                [ PSP, PspCustId, RscId ],
+                Context),
+            update_customer_rsc_id_1(PSP, PspCustId, RscId, Context);
+        false ->
+            {error, enoent}
+    end.
 
 %% @doc Set the resource id of a customer record, its subscriptions and checkouts.
 %% The rsc_id will be propagated to the PSP with an async task.
@@ -1976,19 +1981,24 @@ update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
     RequestorId :: undefined | m_rsc:resource_id(),
     Context :: z:context().
 update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) ->
-    z_db:q("
-        update paysub_checkout
-        set rsc_id = $3,
-            requestor_id = $4
-        where psp = $1
-          and psp_customer_id = $2
-          and ( rsc_id <> $3
-              or rsc_id is null
-              or requestor_id <> $4
-              or requestor_id is null)",
-        [ PSP, PspCustId, RscId, RequestorId ],
-        Context),
-    update_customer_rsc_id_1(PSP, PspCustId, RscId, Context).
+    case RscId =:= undefined orelse m_rsc:exists(RscId, Context) of
+        true ->
+            z_db:q("
+                update paysub_checkout
+                set rsc_id = $3,
+                    requestor_id = $4
+                where psp = $1
+                  and psp_customer_id = $2
+                  and ( rsc_id <> $3
+                      or rsc_id is null
+                      or requestor_id <> $4
+                      or requestor_id is null)",
+                [ PSP, PspCustId, RscId, RequestorId ],
+                Context),
+            update_customer_rsc_id_1(PSP, PspCustId, RscId, Context);
+        false ->
+            {error, enoent}
+    end.
 
 %% @doc Set the resource id of a customer record, its subscriptions and checkouts.
 %% The rsc_id will be propagated to the PSP with an async task.

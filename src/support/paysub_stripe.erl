@@ -1501,15 +1501,18 @@ stripe_invoice(#{
         {error, _} -> []
     end,
     InvItems = lists:map(
-        fun(#{
+        fun
+            (#{
             <<"description">> := ItemDescription,
             <<"currency">> := ItemCurrency,
             <<"amount">> := ItemAmount,
             <<"proration">> := IsProration,
-            <<"price">> := #{
-                <<"id">> := ItemPriceId
-            }
+            <<"price">> := Price
         }) ->
+            ItemPriceId = case Price of
+                #{ <<"id">> := PriceId } -> PriceId;
+                undefined -> undefined
+            end,
             #{
                 description => ItemDescription,
                 currency => z_string:to_upper(ItemCurrency),

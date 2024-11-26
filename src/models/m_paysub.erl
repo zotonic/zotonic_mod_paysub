@@ -2746,24 +2746,28 @@ delete_invoice(PSP, InvId, Context) ->
     LoserId :: m_rsc:resource_id(),
     Context :: z:context().
 rsc_merge(WinnerId, LoserId, Context) ->
-    z_db:q("
+    Count1 = z_db:q("
         update paysub_checkout
         set rsc_id = $1
         where rsc_id = $2
         ", [ WinnerId, LoserId ], Context),
-    z_db:q("
+    Count2 = z_db:q("
         update paysub_subscription
         set rsc_id = $1
         where rsc_id = $2
         ", [ WinnerId, LoserId ], Context),
-    z_db:q("
+    Count3 = z_db:q("
         update paysub_customer
         set rsc_id = $1
         where rsc_id = $2
         ", [ WinnerId, LoserId ], Context),
-    flush_rsc_id(LoserId, Context),
-    flush_rsc_id(WinnerId, Context),
-    ok.
+    if
+        Count1 + Count2 + Count3 > 0 ->
+            flush_rsc_id(LoserId, Context),
+            flush_rsc_id(WinnerId, Context);
+        true ->
+            ok
+    end.
 
 
 %% @doc Merge subscriptions from one resource to another, only for .

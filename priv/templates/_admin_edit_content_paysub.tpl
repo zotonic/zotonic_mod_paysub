@@ -9,6 +9,7 @@
     or id.is_a.person
     or id.is_a.institute
     or id.is_a.institution
+    or m.paysub.is_customer.stripe[id]
 %}
     <div id="rsc-paysub-subs" class="widget do_adminwidget" data-adminwidget='{ "minifiedOnInit": false, "minifier": true }'>
         <div class="widget-header">

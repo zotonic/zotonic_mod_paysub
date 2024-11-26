@@ -2624,6 +2624,8 @@ update_subscription_1(PSP, PspSubId, Sub, Context) ->
     {ok, SubId}.
 
 
+%% @doc Delete a subscription, done by setting the status to 'canceled'.
+%% In this way we keep the history.
 -spec delete_subscription(PSP, PspSubId, Context) -> ok | {error, enoent} when
     PSP :: atom() | binary(),
     PspSubId :: binary(),
@@ -2637,7 +2639,10 @@ delete_subscription(PSP, PspSubId, Context) ->
         [ PSP, PspSubId ],
         Context),
     case z_db:q("
-        delete from paysub_subscription
+        update paysub_subscription
+        set status = 'canceled',
+            canceled_at = coalesce(canceled_at, now()),
+            ended_at = coalesce(ended_at, now())
         where psp = $1
           and psp_subscription_id = $2",
         [ PSP, PspSubId ],

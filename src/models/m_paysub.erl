@@ -1846,7 +1846,7 @@ get_price(PSP, PriceIdOrKey, Context) when is_binary(PriceIdOrKey) ->
             left join paysub_product prod
             on prod.psp = price.psp
             and prod.psp_product_id = price.psp_product_id
-        where price.key = $1
+        where (price.key = $1 or price.name = $1)
           and price.psp = $2
         ", [ PriceIdOrKey, PSP ], Context)
     of

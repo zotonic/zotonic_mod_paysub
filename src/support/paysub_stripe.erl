@@ -294,7 +294,7 @@ checkout_session_create(Args, Context) ->
                 admin_url => AdminUrl,
                 survey_answer_id => proplists:get_value(survey_answer_id, Args)
             },
-            Payload = #{
+            Payload0 = #{
                 cancel_url => CancelUrl,
                 success_url => DoneUrl,
                 mode => Mode,
@@ -302,11 +302,18 @@ checkout_session_create(Args, Context) ->
                 allow_promotion_codes => true,
                 metadata => CheckoutMetadata1,
                 line_items => LineItems,
-                locale => z_context:language(Context),
-                payment_method_data => #{
-                    allow_redisplay => <<"always">>
-                }
+                locale => z_context:language(Context)
             },
+            Payload = case Mode of
+                subscription ->
+                    Payload0#{
+                        payment_method_data => #{
+                            allow_redisplay => <<"always">>
+                        }
+                    };
+                payment ->
+                    Payload0
+            end,
             IsTaxIdCollection = z_convert:to_bool(proplists:get_value(is_tax_id_collection, Args)),
             Payload1 = case IsTaxIdCollection of
                 true ->
@@ -353,11 +360,25 @@ checkout_session_create(Args, Context) ->
                                     case IsBillingAddressCollection of
                                         true -> required;
                                         false -> auto
-                                    end
+                                    end,
+                                subscription_data => BaseSub#{
+                                    metadata => #{
+                                        rsc_id => SubscriberId,
+                                        page_url => m_rsc:p_no_acl(SubscriberId, page_url_abs, Context),
+                                        admin_url => AdminUrl
+                                    }
+                                }
                             };
                         payment ->
                             PE1#{
-                                billing_address_collection => auto
+                                billing_address_collection => auto,
+                                payment_intent_data => #{
+                                    description => proplists:get_value(description, Args, undefined),
+                                    metadata => CheckoutMetadata1
+                                },
+                                invoice_creation => #{
+                                    enabled => true
+                                }
                             }
                     end;
                 {error, enoent} when is_integer(SubscriberId) ->

@@ -401,6 +401,14 @@ m_get([ <<"prices">>, PSP | Rest ], _Msg, Context) ->
         false ->
             {error, eacces}
     end;
+m_get([ <<"products">>, PSP | Rest ], _Msg, Context) ->
+    case is_allowed_paysub(Context) orelse z_acl:is_allowed(use, mod_admin, Context) of
+        true ->
+            {ok, Products} = list_products(PSP, Context),
+            {ok, {Products, Rest}};
+        false ->
+            {error, eacces}
+    end;
 m_get([ <<"price_info">>, PSP, PriceId | Rest ], _Msg, Context) ->
     case get_price(PSP, PriceId, Context) of
         {ok, Price} ->

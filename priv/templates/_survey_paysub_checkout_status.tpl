@@ -41,3 +41,21 @@
         {_ Expired _}
     {% endif %}
 {% endif %}
+
+{% if checkout.args.line_items %}
+    <div class="small" style="margin-top: 5px;">
+        {% for item in checkout.args.line_items %}
+            {% if item.quantity %}
+                {{ item.quantity }}&times;
+            {% endif %}
+            {% if m.paysub.price_info[checkout.psp][item.price] as price %}
+                {{ price.name|default:item.price|escape }}
+            {% else %}
+                {{ item.price|escape }} <span class="text-muted">{{checkout.psp}}</span>
+            {% endif %}
+            {% if not forloop.last %}
+                <br>
+            {% endif %}
+        {% endfor %}
+    </div>
+{% endif %}

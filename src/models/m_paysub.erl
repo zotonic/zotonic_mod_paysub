@@ -1971,8 +1971,7 @@ update_customer_rsc_id(PSP, PspCustId, RscId, Context) ->
                 set rsc_id = $3
                 where psp = $1
                   and psp_customer_id = $2
-                  and ( rsc_id <> $3
-                      or rsc_id is null)",
+                  and (rsc_id <> $3 or rsc_id is null)",
                 [ PSP, PspCustId, RscId ],
                 Context),
             update_customer_rsc_id_1(PSP, PspCustId, RscId, Context);
@@ -1997,7 +1996,7 @@ update_customer_rsc_id(PSP, PspCustId, RscId, RequestorId, Context) ->
                     requestor_id = $4
                 where psp = $1
                   and psp_customer_id = $2
-                  and ( rsc_id <> $3
+                  and (  rsc_id <> $3
                       or rsc_id is null
                       or requestor_id <> $4
                       or requestor_id is null)",
@@ -2036,7 +2035,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
         Context)
     of
         1 ->
-            N1 = z_db:q("
+            N1a = z_db:q("
                 update paysub_subscription
                 set rsc_id = $3
                 where psp = $1
@@ -2045,8 +2044,16 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
                 Context),
             % Update the customer at the PSP async with retries.
             update_customer_psp(PSP, PspCustId, Context),
-            {ok, N1};
+            {ok, N1a};
         0 ->
+            N1b = z_db:q("
+                update paysub_subscription
+                set rsc_id = $3
+                where psp = $1
+                  and psp_customer_id = $2
+                  and (rsc_id <> $3 or rsc_id is null)",
+                [ PSP, PspCustId, RscId ],
+                Context),
             case z_db:q1("
                 select id
                 from paysub_customer
@@ -2056,7 +2063,7 @@ update_customer_rsc_id_1(PSP, PspCustId, RscId, Context) ->
                 Context)
             of
                 undefined -> {{error, enoent}, 0};
-                _Id -> {ok, 0}
+                _Id -> {ok, N1b}
             end
     end,
     if
@@ -2177,14 +2184,14 @@ is_customer_changed(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
             true
     end.
 
-sync_customer_trans(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
+sync_customer_trans(PSP, #{ psp_customer_id := PspCustId } = Cust, Context) ->
     case z_db:q1("
         select id
         from paysub_customer
         where psp = $1
           and psp_customer_id = $2
         for update",
-        [ PSP, CustId ],
+        [ PSP, PspCustId ],
         Context)
     of
         undefined ->
@@ -2198,17 +2205,29 @@ sync_customer_trans(PSP, #{ psp_customer_id := CustId } = Cust, Context) ->
                         where psp = $1
                           and psp_customer_id = $2
                         for update",
-                        [ PSP, CustId ],
+                        [ PSP, PspCustId ],
                         Context),
-                    {ok, _} = z_db:update(paysub_customer, Id, Cust, Context),
+                    sync_customer_trans_1(Id, PSP, PspCustId, Cust, Context),
                     {ok, update};
                 {error, _} = Error ->
                     Error
             end;
         Id ->
-            {ok, _} = z_db:update(paysub_customer, Id, Cust, Context),
+            sync_customer_trans_1(Id, PSP, PspCustId, Cust, Context),
             {ok, update}
     end.
+
+sync_customer_trans_1(Id, PSP, PspCustId, Cust, Context) ->
+    {ok, _} = z_db:update(paysub_customer, Id, Cust, Context),
+    case Cust of
+        #{ rsc_id := RscId } when is_integer(RscId) ->
+            % Ensure that the rsc_id on the customer is
+            % synced to the subscriptions of that customer.
+            update_customer_rsc_id(PSP, PspCustId, RscId, Context);
+        _ ->
+            ok
+    end.
+
 
 -spec delete_customer(PSP, Id, Context) -> ok | {error, enoent} when
     PSP :: atom() | binary(),

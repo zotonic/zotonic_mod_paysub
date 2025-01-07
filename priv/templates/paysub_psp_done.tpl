@@ -40,7 +40,7 @@ Page to show when returned from PSP
                         {_ Something went wrong _}
                     </h2>
 
-                    <p class="alert alert-error">{_ Unknown payment _}</p>
+                    <p class="alert alert-danger">{_ Unknown payment _}</p>
 
                     {% if payment.args.cancel_url %}
                         <p>
@@ -128,7 +128,7 @@ Page to show when returned from PSP
                                     <label for="username" class="control-label">{_ New username _}</label>
                                     <input type="text" id="username" name="username" class="form-control" required inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="username" value="{{ payment.user_info.username|escape }}">
                                     {% validate id="username" type={presence} %}
-                                    <p class="alert alert-error" style="display: none" id="err-username">
+                                    <p class="text-danger" style="display: none" id="err-username">
                                         {_ Sorry, this username is already in use. _}
                                     </p>
                                 </div>

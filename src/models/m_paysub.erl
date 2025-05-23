@@ -1,4 +1,4 @@
-%% @copyright 2022-2024 Marc Worrell
+%% @copyright 2022-2025 Marc Worrell
 %% @doc Model for paid subscriptions
 %% @end
 
@@ -715,7 +715,7 @@ sync_billing_to_rsc(PSP, CustId, Context) ->
             },
             case billing_address(Id, Context) of
                 {ok, CustAddr} ->
-                    ok;
+                    {ok, Id};
                 {ok, #{
                     <<"phone">> := BillingPhone
                 }} ->
@@ -832,7 +832,7 @@ sync_billing_to_psp(PSP, CustId, Context) ->
             },
             case billing_address(Id, Context) of
                 {ok, CustAddr} ->
-                    {ok, Id};
+                    ok;
                 {ok, _} ->
                     IdBin = z_convert:to_binary(Id),
                     TaskId = <<"paysub-to-psp-", PSPBin/binary, $-, IdBin/binary>>,
@@ -1542,11 +1542,15 @@ checkout_update(PSP, CheckoutNr, UpdateProps, Context) ->
         undefined ->
             {error, enoent};
         CheckoutId ->
-            z_db:update(
+            case z_db:update(
                 paysub_checkout,
                 CheckoutId,
                 UpdateProps#{ modified => calendar:universal_time() },
                 Context)
+            of
+                {ok, _} -> ok;
+                {error, _} = Error -> Error
+            end
     end.
 
 
@@ -1667,7 +1671,7 @@ get_customer(PSP, CustId, Context) when is_binary(CustId) ->
 
 
 %% @doc List all products for a PSP
--spec list_products(PSP, Context) -> {ok, list( map() )} when
+-spec list_products(PSP, Context) -> {ok, list( map() )} | {error, term()} when
     PSP :: atom() | binary(),
     Context :: z:context().
 list_products(PSP, Context) ->
@@ -1679,7 +1683,7 @@ list_products(PSP, Context) ->
 
 
 %% @doc List all prices for a PSP
--spec list_prices(PSP, Context) -> {ok, list( map() )} when
+-spec list_prices(PSP, Context) -> {ok, list( map() )} | {error, term()} when
     PSP :: atom() | binary(),
     Context :: z:context().
 list_prices(PSP, Context) ->
@@ -1701,7 +1705,7 @@ list_prices(PSP, Context) ->
 
 
 %% @doc List all customers for a PSP
--spec list_customers(PSP, Context) -> {ok, list( map() )} when
+-spec list_customers(PSP, Context) -> {ok, list( map() )} | {error, term()} when
     PSP :: atom() | binary(),
     Context :: z:context().
 list_customers(PSP, Context) ->
@@ -2098,7 +2102,7 @@ sync_customer_rsc_id(RscId, Context) ->
     end.
 
 %% @doc Update the customer records at the PSP.
--spec update_customer_psp(PSP, PspCustId, Context) -> ok | {error, enoent} when
+-spec update_customer_psp(PSP, PspCustId, Context) -> ok | {error, term()} when
     PSP :: atom() | binary(),
     PspCustId :: binary(),
     Context :: z:context().
@@ -2106,7 +2110,10 @@ update_customer_psp(PSP, PspCustId, Context) ->
     PSP1 = z_convert:to_binary(PSP),
     Args = [ PSP1, PspCustId ],
     Key = <<PSP1/binary, $:, PspCustId/binary>>,
-    z_pivot_rsc:insert_task_after(60, ?MODULE, update_customer_psp_task, Key, Args, Context).
+    case z_pivot_rsc:insert_task_after(60, ?MODULE, update_customer_psp_task, Key, Args, Context) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 update_customer_psp_task(<<"stripe">>, PspCustId, Context) ->
     paysub_stripe:update_customer_task(PspCustId, Context);
@@ -2126,7 +2133,7 @@ sync_customers(PSP, Custs, Context) ->
         end,
         Custs).
 
--spec sync_customer(PSP, Cust, Context) -> ok when
+-spec sync_customer(PSP, Cust, Context) -> ok | {error, term()} when
     PSP :: atom() | binary(),
     Cust :: map(),
     Context :: z:context().

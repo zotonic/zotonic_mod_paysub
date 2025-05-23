@@ -31,7 +31,7 @@ m_get(_Path, _Msg, _Context) ->
 
 
 %% @doc Extra query terms. Query for subscribers.
--spec search_query_term(QueryTerm, Context) -> SqlTerm when
+-spec search_query_term(QueryTerm, Context) -> SqlTerm | undefined when
     QueryTerm :: #search_query_term{},
     Context :: z:context(),
     SqlTerm :: #search_sql_term{}.

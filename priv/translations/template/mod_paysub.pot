@@ -97,6 +97,18 @@ msgid ""
 msgstr ""
 ""
 
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:70
+msgid ""
+"Any subscription"
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:69
+msgid ""
+"Any subscription at any time"
+msgstr ""
+""
+
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:33./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:47./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:61./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:163
 msgid ""
 "Back"
@@ -437,6 +449,12 @@ msgstr ""
 #: ./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:137
 msgid ""
 "No products found."
+msgstr ""
+""
+
+#: ./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:71
+msgid ""
+"No subscription"
 msgstr ""
 ""
 

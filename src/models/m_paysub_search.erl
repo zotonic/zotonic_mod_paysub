@@ -278,6 +278,28 @@ search_query_term(#search_query_term{ term = <<"paysub_subscription_status">>, a
                 ],
                 args = [ Status ]
             };
+        <<"any">> ->
+            % All subscribers with past or current subscriptions.
+            #search_sql_term{
+                where = [
+                    <<"rsc.id in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.rsc_id is not null
+                    )">>
+                ]
+            };
+        <<"none">> ->
+            % Not having had any subscription, in the past or current.
+            #search_sql_term{
+                where = [
+                    <<"rsc.id not in (
+                        select paysub.rsc_id
+                        from paysub_subscription paysub
+                        where paysub.rsc_id is not null
+                    )">>
+                ]
+            };
         Status ->
             % All subscribers with a certain status at any moment
             #search_sql_term{

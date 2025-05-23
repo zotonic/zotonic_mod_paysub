@@ -66,6 +66,10 @@
                         </option>
                     {% endfor %}
                 </optgroup>
+                <optgroup label="{_ Any subscription at any time _}">
+                    <option value="any" {% if q.qpaysub_subscription_status == 'any' %}selected{% endif %}>{_ Any subscription _}</option>
+                    <option value="none" {% if q.qpaysub_subscription_status == 'none' %}selected{% endif %}>{_ No subscription _}</option>
+                </optgroup>
             </select>
         </div>
     </div>

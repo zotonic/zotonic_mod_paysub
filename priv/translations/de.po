@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2024-12-13 15:19+0100\n"
+"PO-Revision-Date: 2025-05-23 10:02+0200\n"
 "Last-Translator: Marc Worrell <marc@worrell.nl>\n"
 "Language-Team: \n"
 "Language: de\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.5\n"
+"X-Generator: Poedit 3.6\n"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:104
 msgid "(tiered pricing)"
@@ -75,6 +75,14 @@ msgstr ""
 "Eine Übersicht über die Benutzergruppen und die Anzahl der Abonnements pro "
 "Benutzergruppe."
 
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:70
+msgid "Any subscription"
+msgstr "Irgendein Abonnement"
+
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:69
+msgid "Any subscription at any time"
+msgstr "Jedes Abonnement zu jeder Zeit"
+
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:33./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:47./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:61./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:163
 msgid "Back"
 msgstr "Zurück"
@@ -110,7 +118,6 @@ msgid "Canceling at this moment"
 msgstr "Jetzt storniert"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:140
-#, fuzzy
 msgid "City"
 msgstr "Stadt"
 
@@ -135,8 +142,6 @@ msgid "Continue to your profile page"
 msgstr "Weiter zu Ihrer Profilseite"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:131
-#, fuzzy
-#| msgid "Amount"
 msgid "Country"
 msgstr "Land"
 
@@ -254,10 +259,8 @@ msgid "Modified"
 msgstr "Geändert"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:128
-#, fuzzy
-#| msgid "Move subscriptions"
 msgid "More options"
-msgstr "Abonnements verschieben"
+msgstr "Mehr Optionen"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:46
 msgid "Move subscriptions"
@@ -314,6 +317,10 @@ msgstr "Keine Zahlungen gefunden."
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:137
 msgid "No products found."
 msgstr "Keine Produkte gefunden."
+
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:71
+msgid "No subscription"
+msgstr "Kein Abonnement"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_paysub_subscriptions_table.tpl:135
 msgid "No subscriptions found."
@@ -488,16 +495,12 @@ msgid "Something went wrong"
 msgstr "Entschuldigen Sie, irgendwas ging schief."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:109
-#, fuzzy
-#| msgid "Sorry, can't redirect to the customer portal."
 msgid "Sorry, can't create a customer for this PSP."
-msgstr "Tut mir leid, ich kann nicht zum Kundenportal weiterleiten."
+msgstr "Leider kann ich für diese PSP keinen Kunden anlegen."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:125
-#, fuzzy
-#| msgid "Sorry, can't redirect to the customer portal."
 msgid "Sorry, can't find the customer for this PSP."
-msgstr "Tut mir leid, ich kann nicht zum Kundenportal weiterleiten."
+msgstr "Sorry, ich kann den Kunden für diese PSP nicht finden."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:90./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:93
 msgid "Sorry, can't redirect to the customer portal."
@@ -515,8 +518,6 @@ msgstr ""
 "noch einmal."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:106
-#, fuzzy
-#| msgid "Something went wrong"
 msgid "Sorry, something went wrong."
 msgstr "Entschuldigen Sie, irgendwas ging schief."
 
@@ -533,16 +534,14 @@ msgid "Sorry, this username is already in use."
 msgstr "Entschuldigung, dieser Benutzername wird bereits verwendet."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:112
-#, fuzzy
-#| msgid "You are not allowed to do this."
 msgid "Sorry, you are not allowed to create a customer for this PSP."
-msgstr "Hierzu haben Sie keine Berechtigung"
+msgstr "Sie dürfen leider keinen Kunden für diese PSP anlegen."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:128
-#, fuzzy
-#| msgid "You are not allowed to do this."
 msgid "Sorry, you are not allowed to update customer for this PSP."
-msgstr "Hierzu haben Sie keine Berechtigung"
+msgstr ""
+"Es tut uns leid, Sie sind nicht berechtigt Kunden für diese PSP zu "
+"aktualisieren."
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:54./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:52
 msgid "Specific at any time"

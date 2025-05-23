@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2024-12-13 15:21+0100\n"
+"PO-Revision-Date: 2025-05-23 10:04+0200\n"
 "Last-Translator: Marc Worrell <marc@worrell.nl>\n"
 "Language-Team: \n"
 "Language: nl\n"
@@ -18,10 +18,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.5\n"
+"X-Generator: Poedit 3.6\n"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:104
-#, fuzzy
 msgid "(tiered pricing)"
 msgstr "(gedifferentieerde prijzen)"
 
@@ -42,7 +41,6 @@ msgid "Active/inactive"
 msgstr "Actief/inactief"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:149./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:157
-#, fuzzy
 msgid "Add filter on country."
 msgstr "Filter op land toevoegen."
 
@@ -76,6 +74,14 @@ msgid ""
 msgstr ""
 "Een overzicht van gebruikersgroepen en het aantal abonnementen per "
 "gebruikersgroep."
+
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:70
+msgid "Any subscription"
+msgstr "Elk abonnement"
+
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:69
+msgid "Any subscription at any time"
+msgstr "Elk abonnement op elk moment"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:33./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:47./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:61./_build/default/lib/zotonic_mod_paysub/priv/templates/paysub_psp_done.tpl:163
 msgid "Back"
@@ -138,7 +144,6 @@ msgid "Country"
 msgstr "Land"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:73./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:78
-#, fuzzy
 msgid "Create Stripe customer"
 msgstr "Stripe-klant aanmaken"
 
@@ -151,7 +156,6 @@ msgid "Current subscriptions"
 msgstr "Huidige abonnementen"
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:123
-#, fuzzy
 msgid "Data will be sent to Stripe."
 msgstr "De gegevens worden naar Stripe verzonden."
 
@@ -311,6 +315,10 @@ msgstr "Geen betalingen gevonden."
 msgid "No products found."
 msgstr "Geen producten gevonden."
 
+#: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:71
+msgid "No subscription"
+msgstr "Geen abonnement"
+
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_paysub_subscriptions_table.tpl:135
 msgid "No subscriptions found."
 msgstr "Geen abonnementen gevonden."
@@ -408,7 +416,6 @@ msgid "Phone"
 msgstr "Mobiel"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:153
-#, fuzzy
 msgid "Postcode prefix"
 msgstr "Postcode prefix"
 
@@ -485,16 +492,12 @@ msgid "Something went wrong"
 msgstr "Er ging iets mis"
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:109
-#, fuzzy
-#| msgid "Sorry, can't redirect to the customer portal."
 msgid "Sorry, can't create a customer for this PSP."
-msgstr "Sorry, ik kan niet doorverwijzen naar het klantenportaal."
+msgstr "Sorry, ik kan geen klant aanmaken voor deze PSP."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:125
-#, fuzzy
-#| msgid "Sorry, can't redirect to the customer portal."
 msgid "Sorry, can't find the customer for this PSP."
-msgstr "Sorry, ik kan niet doorverwijzen naar het klantenportaal."
+msgstr "Sorry, ik kan de klant voor deze PSP niet vinden."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:90./_build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:93
 msgid "Sorry, can't redirect to the customer portal."
@@ -525,16 +528,12 @@ msgid "Sorry, this username is already in use."
 msgstr "Sorry, deze gebruikersnaam is al in gebruik. Probeer een andere."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:112
-#, fuzzy
-#| msgid "You are not allowed to do this."
 msgid "Sorry, you are not allowed to create a customer for this PSP."
-msgstr "U hebt geen toestemming om dit te doen."
+msgstr "Sorry, je mag geen klant aanmaken voor deze PSP."
 
 #: _build/default/lib/zotonic_mod_paysub/src/mod_paysub.erl:128
-#, fuzzy
-#| msgid "You are not allowed to do this."
 msgid "Sorry, you are not allowed to update customer for this PSP."
-msgstr "U hebt geen toestemming om dit te doen."
+msgstr "Sorry, je mag geen klant-updates uitvoeren voor deze PSP."
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_overview_filter_panel.tpl:54./_build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:52
 msgid "Specific at any time"
@@ -597,7 +596,6 @@ msgid "This will move all subscriptions for the following PSPs:"
 msgstr "Hiermee worden alle abonnementen voor de volgende PSP's verplaatst:"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:77
-#, fuzzy
 msgid ""
 "This will send the personal data to Stripe and create a Stripe customer."
 msgstr ""
@@ -605,7 +603,6 @@ msgstr ""
 "Stripe-klant aangemaakt."
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:89
-#, fuzzy
 msgid ""
 "This will send the personal data to Stripe and update the Stripe customer."
 msgstr ""
@@ -641,12 +638,10 @@ msgid "Unpaid"
 msgstr "Niet betaald"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:85./_build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:90
-#, fuzzy
 msgid "Update Stripe customer"
 msgstr "Stripe-klant bijwerken"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/admin_paysub_products_overview.tpl:9
-#, fuzzy
 msgid "Update from services"
 msgstr "Update van diensten"
 
@@ -659,7 +654,6 @@ msgid "View Payments"
 msgstr "Betalingen bekijken"
 
 #: _build/default/lib/zotonic_mod_paysub/priv/templates/_admin_edit_content_paysub.tpl:97
-#, fuzzy
 msgid "View at Stripe"
 msgstr "Bekijk bij Stripe"
 

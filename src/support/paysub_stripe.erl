@@ -1522,17 +1522,31 @@ stripe_invoice(#{
         {error, _} -> []
     end,
     InvItems = lists:map(
-        fun
-            (#{
+        fun(#{
             <<"description">> := ItemDescription,
             <<"currency">> := ItemCurrency,
             <<"amount">> := ItemAmount,
-            <<"proration">> := IsProration,
-            <<"price">> := Price
-        }) ->
-            ItemPriceId = case Price of
-                #{ <<"id">> := PriceId } -> PriceId;
-                undefined -> undefined
+            <<"proration">> := IsProration
+        } = InvItem) ->
+            PricingOrPrice = maps:get(<<"pricing">>, InvItem,
+                maps:get(<<"price">>, InvItem, undefined)),
+            ItemPriceId = case PricingOrPrice of
+                % From API 2025-03-31.basil
+                #{
+                    <<"type">> := <<"price_details">>,
+                    <<"price_details">> := #{
+                        <<"price">> := PriceId
+                    }
+                } ->
+                    PriceId;
+                #{
+                    <<"object">> := <<"price">>,
+                    <<"id">> := PriceId
+                } ->
+                    % Before API 2025-03-31.basil
+                    PriceId;
+                undefined ->
+                    undefined
             end,
             #{
                 description => ItemDescription,
@@ -1674,7 +1688,7 @@ sync_payment(PaymentObject, Context) ->
     Payment1 = stripe_payment(PaymentObject, Context),
     m_paysub:sync_payment(stripe, Payment1, Context).
 
-%% @doc Delete an invoice received via Stripe webhook.
+%% @doc Delete an payment received via Stripe webhook.
 -spec delete_payment(PaymentObject, Context) -> ok | {error, enoent} when
     PaymentObject :: map(),
     Context :: z:context().
@@ -1706,8 +1720,11 @@ stripe_payment(#{
         created => timestamp_to_datetime(Created)
     }.
 
-payment_name_details(#{ <<"charges">> := #{ <<"data">> := Data }}) ->
-    payment_charge_details(Data);
+payment_name_details(#{ <<"latest_charge">> := LatestCharge }) when is_map(LatestCharge) ->
+    payment_charge_details([LatestCharge]);
+payment_name_details(#{ <<"charges">> := #{ <<"data">> := ChargesList }}) ->
+    % Old(er) Stripe API - before 2022-11-15
+    payment_charge_details(ChargesList);
 payment_name_details(_) ->
     #{}.
 

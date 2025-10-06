@@ -1525,23 +1525,36 @@ stripe_invoice(#{
         fun(#{
             <<"description">> := ItemDescription,
             <<"currency">> := ItemCurrency,
-            <<"amount">> := ItemAmount,
-            <<"proration">> := IsProration
+            <<"amount">> := ItemAmount
         } = InvItem) ->
-            PricingOrPrice = maps:get(<<"pricing">>, InvItem,
-                maps:get(<<"price">>, InvItem, undefined)),
-            ItemPriceId = case PricingOrPrice of
+            IsProration = case InvItem of
+                #{
+                    <<"parent">> := #{
+                        <<"invoice_item_details">> := #{
+                            <<"proration">> := IsP
+                        }
+                    }
+                } ->
+                    IsP;
+                #{ <<"proration">> := IsP } ->
+                    IsP
+            end,
+            ItemPriceId = case InvItem of
                 % From API 2025-03-31.basil
                 #{
-                    <<"type">> := <<"price_details">>,
-                    <<"price_details">> := #{
-                        <<"price">> := PriceId
+                    <<"pricing">> := #{
+                        <<"type">> := <<"price_details">>,
+                        <<"price_details">> := #{
+                            <<"price">> := PriceId
+                        }
                     }
                 } ->
                     PriceId;
                 #{
-                    <<"object">> := <<"price">>,
-                    <<"id">> := PriceId
+                    <<"price">> := #{
+                        <<"object">> := <<"price">>,
+                        <<"id">> := PriceId
+                    }
                 } ->
                     % Before API 2025-03-31.basil
                     PriceId;

@@ -26,11 +26,11 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
--define(API_URL, "https://api.stripe.com/v1/").
-
+-define(STRIPE_API_URL, "https://api.stripe.com/v1/").
+-define(STRIPE_API_VERSION, <<"2025-09-30.clover">>).
 
 fetch(Method, [ P | _ ] = Path, Payload, Context) when is_list(P); is_binary(P) ->
-    Url = iolist_to_binary([ ?API_URL, lists:join($/, Path) ]),
+    Url = iolist_to_binary([ ?STRIPE_API_URL, lists:join($/, Path) ]),
     case m_config:get_value(mod_paysub, stripe_api_key, <<>>, Context) of
         <<>> ->
             ?LOG_WARNING(#{
@@ -45,7 +45,8 @@ fetch(Method, [ P | _ ] = Path, Payload, Context) when is_list(P); is_binary(P) 
         ApiKey ->
             Options = [
                 {authorization, <<"Bearer ", ApiKey/binary>>},
-                {content_type, "application/x-www-form-urlencoded"}
+                {content_type, "application/x-www-form-urlencoded"},
+                {headers, [ {<<"Stripe-Version">>, ?STRIPE_API_VERSION} ]}
             ],
             RequestBody = flatten(Payload),
             Result = case Method of

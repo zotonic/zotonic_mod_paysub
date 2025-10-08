@@ -1550,15 +1550,15 @@ stripe_invoice(#{
                     }
                 } ->
                     PriceId;
+                % Before API 2025-03-31.basil
                 #{
                     <<"price">> := #{
                         <<"object">> := <<"price">>,
                         <<"id">> := PriceId
                     }
                 } ->
-                    % Before API 2025-03-31.basil
                     PriceId;
-                undefined ->
+                _ ->
                     undefined
             end,
             #{

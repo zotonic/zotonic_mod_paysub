@@ -1271,11 +1271,10 @@ stripe_subscription(#{
         <<"cancel_at">> := CancelAt,
         <<"start_date">> := StartDate,
         <<"ended_at">> := EndDate,
-        <<"current_period_start">> := CurrPeriodStart,
-        <<"current_period_end">> := CurrPeriodEnd,
         <<"trial_start">> := TrialStart,
         <<"trial_end">> := TrialEnd
     } = Sub, Context) ->
+    {CurrPeriodStart, CurrPeriodEnd} = subscription_period(Sub),
     PspSub = #{
         psp => <<"stripe">>,
         psp_subscription_id => Id,
@@ -1298,6 +1297,29 @@ stripe_subscription(#{
                 rsc_id => RscId
             }
     end.
+
+subscription_period(#{
+        <<"current_period_start">> := CurrPeriodStart,
+        <<"current_period_end">> := CurrPeriodEnd
+    }) ->
+    % Removed from the subscription in 2025-03-31.basil
+    % https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-subscription-current-period-start-and-end
+    {CurrPeriodStart, CurrPeriodEnd};
+subscription_period(#{
+        <<"items">> := #{
+            <<"data">> := [
+                #{
+                    <<"object">> := <<"subscription_item">>,
+                    <<"current_period_start">> := CurrPeriodStart,
+                    <<"current_period_end">> := CurrPeriodEnd
+                }
+                | _
+            ]
+        }
+    }) ->
+    {CurrPeriodStart, CurrPeriodEnd};
+subscription_period(_) ->
+    {undefined, undefined}.
 
 maybe_set_customer_rsc_id(undefined, _CustId, _Context) ->
     ok;
@@ -1528,6 +1550,8 @@ stripe_invoice(#{
             <<"amount">> := ItemAmount
         } = InvItem) ->
             IsProration = case InvItem of
+                #{ <<"proration">> := IsP } ->
+                    IsP;
                 #{
                     <<"parent">> := #{
                         <<"invoice_item_details">> := #{
@@ -1536,11 +1560,17 @@ stripe_invoice(#{
                     }
                 } ->
                     IsP;
-                #{ <<"proration">> := IsP } ->
+                #{
+                    <<"parent">> := #{
+                        <<"subscription_item_details">> := #{
+                            <<"proration">> := IsP
+                        }
+                    }
+                } ->
                     IsP
             end,
             ItemPriceId = case InvItem of
-                % From API 2025-03-31.basil
+                % Starting API 2025-03-31.basil
                 #{
                     <<"pricing">> := #{
                         <<"type">> := <<"price_details">>,

@@ -1670,8 +1670,8 @@ sync_payments(Context) ->
     of
         {ok, Payments} ->
             Payments1 = lists:map(
-                fun(Inv) ->
-                    stripe_payment(Inv, Context)
+                fun(Payment) ->
+                    stripe_payment(Payment, Context)
                 end, Payments),
             m_paysub:sync_payments(stripe, Payments1, Context);
         {error, _} = Error ->
@@ -1697,7 +1697,7 @@ sync_payment(PaymentId, Context) when is_binary(PaymentId) ->
         {error, _} = Error ->
             Error
     end;
-sync_payment(PaymentObject, Context) ->
+sync_payment(PaymentObject, Context) when is_map(PaymentObject) ->
     Payment1 = stripe_payment(PaymentObject, Context),
     m_paysub:sync_payment(stripe, Payment1, Context).
 
@@ -1708,7 +1708,6 @@ sync_payment(PaymentObject, Context) ->
 delete_payment(#{ <<"id">> := Id }, Context) ->
     m_paysub:delete_payment(stripe, Id, Context).
 
-
 stripe_payment(#{
         <<"id">> := Id,
         <<"status">> := Status,
@@ -1717,14 +1716,14 @@ stripe_payment(#{
         <<"currency">> := Currency,
         <<"amount">> := Amount,
         <<"amount_received">> := AmountReceived,
-        <<"invoice">> := InvoiceId,
+        % <<"invoice">> := InvoiceId,  -- removed in API 2025-03-31.basil
         <<"created">> := Created
     } = P, _Context) ->
     Payment = payment_name_details(P),
     Payment#{
         psp_payment_id => Id,
         psp_customer_id => CustomerId,
-        psp_invoice_id => InvoiceId,
+        psp_invoice_id => undefined,
         status => Status,
         description => Description,
         currency => z_string:to_upper(Currency),

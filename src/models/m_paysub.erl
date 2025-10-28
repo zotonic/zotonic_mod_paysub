@@ -931,7 +931,7 @@ overview_ug(Context) ->
              paysub_price price,
              paysub_subscription_item item,
              paysub_subscription sub
-        where sub.status <> 'canceled'
+        where sub.status not in ('canceled', 'incomplete_expired')
           and item.subscription_id = sub.id
           and item.psp = price.psp
           and item.psp_price_id = price.psp_price_id

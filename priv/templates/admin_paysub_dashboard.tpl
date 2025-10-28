@@ -40,16 +40,13 @@
                 <th>
                     {_ Unpaid _}
                 </th>
-                <th>
-                    {_ Incomplete<br>expired _}
-                </th>
                 <th style="border-left: 1px solid black">
                     {_ TOTAL _}
                 </th>
             </tr>
         </thead>
         <tbody>
-        {% with [ 'active', 'incomplete', 'past_due', 'trialing', 'unpaid', 'incomplete_expired' ] as states %}
+        {% with [ 'active', 'incomplete', 'past_due', 'trialing', 'unpaid' ] as states %}
             {% with m.paysub.overview_by.user_group as r %}
                 {% for id in r.user_groups %}
                 <tr>

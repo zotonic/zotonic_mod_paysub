@@ -355,12 +355,6 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/priv/templates/admin_paysub_dashboard.tpl:44
-msgid ""
-"Incomplete<br>expired"
-msgstr ""
-""
-
 #: zotonic_mod_paysub/priv/templates/_dialog_paysub_product_info.tpl:72
 msgid ""
 "Institute is subscriber, user will be the main contact"
@@ -680,6 +674,12 @@ msgid ""
 msgstr ""
 ""
 
+#: zotonic_mod_paysub/src/support/paysub_stripe.erl:103
+msgid ""
+"Please agree to the terms."
+msgstr ""
+""
+
 #: zotonic_mod_paysub/priv/templates/admin_paysub_subscriptions_overview.tpl:153
 msgid ""
 "Postcode prefix"
@@ -833,8 +833,10 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/support/paysub_stripe.erl:93
-#: zotonic_mod_paysub/src/support/paysub_stripe.erl:112
+#: zotonic_mod_paysub/src/support/paysub_stripe.erl:100
+#: zotonic_mod_paysub/src/support/paysub_stripe.erl:109
+#: zotonic_mod_paysub/src/support/paysub_stripe.erl:118
+#: zotonic_mod_paysub/src/support/paysub_stripe.erl:137
 msgid ""
 "Sorry, something went wrong, please try again later."
 msgstr ""
@@ -946,8 +948,8 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/priv/templates/admin_paysub_dashboard.tpl:47
-#: zotonic_mod_paysub/priv/templates/admin_paysub_dashboard.tpl:76
+#: zotonic_mod_paysub/priv/templates/admin_paysub_dashboard.tpl:44
+#: zotonic_mod_paysub/priv/templates/admin_paysub_dashboard.tpl:73
 msgid ""
 "TOTAL"
 msgstr ""

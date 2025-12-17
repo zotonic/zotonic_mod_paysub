@@ -85,7 +85,32 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 %% @doc UI - checkout redirect
+event(#submit{ message = {checkout, Args} }, Context) ->
+    % Submit with optional consent checkboxes.
+    case consent_collected(Args, Context) of
+        true ->
+            Args1 = [
+                {consent_collection, false}
+                | Args
+            ],
+            case checkout_session_create(Args1, Context) of
+                {ok, Url} ->
+                    z_render:wire({redirect, [ {location, Url} ]}, Context);
+                {error, _} ->
+                    z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
+            end;
+        error ->
+            z_render:growl(?__("Please agree to the terms.", Context), Context);
+        false ->
+            case checkout_session_create(Args, Context) of
+                {ok, Url} ->
+                    z_render:wire({redirect, [ {location, Url} ]}, Context);
+                {error, _} ->
+                    z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
+            end
+    end;
 event(#postback{ message = {checkout, Args} }, Context) ->
+    % Simple button postback, consent collection is done on the Stripe checkout.
     case checkout_session_create(Args, Context) of
         {ok, Url} ->
             z_render:wire({redirect, [ {location, Url} ]}, Context);
@@ -110,6 +135,26 @@ event(#postback{ message = {customer_portal, Args} }, Context) ->
             z_render:wire({redirect, [ {location, Url} ]}, Context);
         {error, _} ->
             z_render:growl(?__("Sorry, something went wrong, please try again later.", Context), Context)
+    end.
+
+%% @doc Check if all the consent checkboxes are checked.
+consent_collected(Args, Context) ->
+    case proplists:get_value(consent, Args) of
+        undefined ->
+            false;
+        [] ->
+            false;
+        Elt when is_binary(Elt) ->
+            case z_convert:to_bool(z_context:get_q(Elt, Context)) of
+                true -> true;
+                false -> error
+            end;
+        Elts when is_list(Elts) ->
+            Es = [ z_convert:to_bool(z_context:get_q(Elt, Context)) || Elt <- Elts ],
+            case lists:all(fun(E) -> E end, Es) of
+                true -> true;
+                false -> error
+            end
     end.
 
 %% @doc Check if this user id has a known stripe customer id, if so then a
@@ -353,9 +398,10 @@ checkout_session_create(Args, Context) ->
                             name => auto
                         }
                     }),
+                    PE2 = maybe_add_consent_collection(PE1, Args, false),
                     case Mode of
                         subscription ->
-                            PE1#{
+                            PE2#{
                                 billing_address_collection =>
                                     case IsBillingAddressCollection of
                                         true -> required;
@@ -370,7 +416,7 @@ checkout_session_create(Args, Context) ->
                                 }
                             };
                         payment ->
-                            PE1#{
+                            PE2#{
                                 billing_address_collection => auto,
                                 payment_intent_data => #{
                                     description => proplists:get_value(description, Args, undefined),
@@ -397,11 +443,7 @@ checkout_session_create(Args, Context) ->
                                     }
                             end
                     end,
-                    PE2 = PE1#{
-                        consent_collection => #{
-                            terms_of_service => required
-                        }
-                    },
+                    PE2 = maybe_add_consent_collection(PE1, Args, true),
                     case Mode of
                         subscription ->
                             PE2#{
@@ -432,12 +474,9 @@ checkout_session_create(Args, Context) ->
                             }
                     end;
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= payment ->
-                    Payload2#{
+                    PE1 = Payload2#{
                         customer_creation => if_required,
                         billing_address_collection => auto,
-                        consent_collection => #{
-                            terms_of_service => required
-                        },
                         invoice_creation => #{
                             enabled => true
                         },
@@ -445,19 +484,18 @@ checkout_session_create(Args, Context) ->
                             description => proplists:get_value(description, Args, undefined),
                             metadata => CheckoutMetadata1
                         }
-                    };
+                    },
+                    maybe_add_consent_collection(PE1, Args, true);
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= subscription ->
-                    Payload2#{
-                        billing_address_collection =>
-                            case IsBillingAddressCollection of
-                                true -> required;
-                                false -> auto
-                            end,
-                        consent_collection => #{
-                            terms_of_service => required
+                    PE1 = Payload2#{
+                            billing_address_collection =>
+                                case IsBillingAddressCollection of
+                                    true -> required;
+                                    false -> auto
+                                end,
+                            subscription_data => BaseSub
                         },
-                        subscription_data => BaseSub
-                    }
+                    maybe_add_consent_collection(PE1, Args, true)
             end,
             Payload4 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
                 <<>> -> Payload3;
@@ -510,6 +548,34 @@ checkout_session_create(Args, Context) ->
                 args => Args
             }),
             Error
+    end.
+
+maybe_add_consent_collection(Payload, Args, Default) ->
+    case proplists:get_value(consent_collection, Args) of
+        undefined when Default =:= false ->
+            Payload#{
+                consent_collection => #{
+                    terms_of_service => none
+                }
+            };
+        undefined ->
+            Payload#{
+                consent_collection => #{
+                    terms_of_service => required
+                }
+            };
+        true ->
+            Payload#{
+                consent_collection => #{
+                    terms_of_service => required
+                }
+            };
+        false ->
+            Payload#{
+                consent_collection => #{
+                    terms_of_service => none
+                }
+            }
     end.
 
 checkout_line_items(Args, Context) ->

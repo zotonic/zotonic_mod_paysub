@@ -570,62 +570,79 @@ maybe_add_custom_fields(Payload, Args) ->
                         };
                     (#{ <<"name">> := Name, <<"options">> := Options } = F) ->
                         Label = maps:get(<<"label">>, F, Name),
-                        Options1 = lists:filtermap(
-                            fun
-                                (Option) when is_binary(Option); is_atom(Option) ->
-                                    OptBin = z_convert:to_binary(Option),
-                                    {true, #{
-                                        label => OptBin,
-                                        value => OptBin
-                                    }};
-                                (#{ <<"value">> := Value } = Opt) ->
-                                    OptLabel = maps:get(<<"label">>, Opt, Value),
-                                    {true, #{
-                                        label => OptLabel,
-                                        value => Value
-                                    }};
-                                (#{ value := Value } = Opt) ->
-                                    OptLabel = maps:get(label, Opt, Value),
-                                    {true, #{
-                                        label => z_convert:to_binary(OptLabel),
-                                        value => z_convert:to_binary(Value)
-                                    }};
-                                (_) ->
-                                    false
-                            end,
-                            Options),
                         IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),
-                        #{
-                            key => Name,
-                            label => #{
-                                type => <<"custom">>,
-                                custom => Label
-                            },
-                            type => <<"dropdown">>,
-                            optional => not IsRequired,
-                            dropdown => #{
-                                options => Options1
-                            }
-                        };
+                        custom_field_options(Name, Label, IsRequired, Options);
+                    (#{ name := Name, options := Options } = F) ->
+                        Label = maps:get(label, F, Name),
+                        IsRequired = z_convert:to_bool(maps:get(is_required, F, false)),
+                        custom_field_options(Name, Label, IsRequired, Options);
                     (#{ <<"name">> := Name } = F) ->
                         Label = maps:get(<<"label">>, F, Name),
                         Type = maps:get(<<"type">>, F, <<"text">>),
                         IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),
-                        #{
-                            key => Name,
-                            label => #{
-                                type => <<"custom">>,
-                                custom => Label
-                            },
-                            type => Type,
-                            optional => not IsRequired
-                        }
+                        custom_field_type(Name, Label, IsRequired, Type);
+                    (#{ name := Name } = F) ->
+                        Label = maps:get(label, F, Name),
+                        Type = maps:get(type, F, <<"text">>),
+                        IsRequired = z_convert:to_bool(maps:get(is_required, F, false)),
+                        custom_field_type(Name, Label, IsRequired, Type)
                 end,
                 CustomFields),
             Payload#{
                 custom_fields => Custom
             }
     end.
+
+
+custom_field_type(Name, Label, IsRequired, Type) ->
+    #{
+        key => Name,
+        label => #{
+            type => <<"custom">>,
+            custom => Label
+        },
+        type => Type,
+        optional => not IsRequired
+    }.
+
+custom_field_options(Name, Label, IsRequired, Options) ->
+    Options1 = lists:filtermap(
+        fun
+            (Option) when is_binary(Option); is_atom(Option) ->
+                OptBin = z_convert:to_binary(Option),
+                {true, #{
+                    label => OptBin,
+                    value => OptBin
+                }};
+            (#{ <<"value">> := Value } = Opt) ->
+                OptLabel = maps:get(<<"label">>, Opt, Value),
+                {true, #{
+                    label => OptLabel,
+                    value => Value
+                }};
+            (#{ value := Value } = Opt) ->
+                OptLabel = maps:get(label, Opt, Value),
+                {true, #{
+                    label => z_convert:to_binary(OptLabel),
+                    value => z_convert:to_binary(Value)
+                }};
+            (_) ->
+                false
+        end,
+        Options),
+    #{
+        key => Name,
+        label => #{
+            type => <<"custom">>,
+            custom => Label
+        },
+        type => <<"dropdown">>,
+        optional => not IsRequired,
+        dropdown => #{
+            options => Options1
+        }
+    }.
+
 
 maybe_add_consent_collection(Payload, Args, Default) ->
     case proplists:get_value(consent_collection, Args) of

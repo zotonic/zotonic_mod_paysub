@@ -1,9 +1,9 @@
 %% @author Marc Worrell <marc@worrell.nl>
-%% @copyright 2022-2024 Marc Worrell
+%% @copyright 2022-2026 Marc Worrell
 %% @doc Subscriptions and payments for members using Stripe and other PSPs
 %% @end
 
-%% Copyright 2022-2024 Marc Worrell
+%% Copyright 2022-2026 Marc Worrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -25,6 +25,39 @@
 -mod_depends([ mod_authentication, mod_l10n ]).
 -mod_schema(13).
 -mod_prio(500).
+
+-mod_config([
+        #{
+            key => stripe_api_key,
+            type => string,
+            default => <<>>,
+            description => "The API key for Stripe. This is required to use Stripe as a payment service provider."
+        },
+        #{
+            key => stripe_webhook_secret,
+            type => string,
+            default => <<>>,
+            description => "The webhook secret for Stripe. This is required to verify the authenticity of webhook events from Stripe."
+        },
+        #{
+            key => is_unpaid_access,
+            type => boolean,
+            default => false,
+            description => "If set to true, users with incomplete_expired and unpaid subscriptions will have access to the site. "
+                           "If set to false, users with unpaid subscriptions will not have access to the site. This can be useful "
+                           "if you want to allow users to access the site while they are in the process of renewing their "
+                           "subscription or if you want to give users a grace period after their subscription has expired."
+        },
+        #{
+            key => is_no_customer_sync,
+            type => boolean,
+            default => false,
+            description => "If set to true, the customer data will not be synced from the PSP to the resource. This means that "
+                           "changes to the customer data at the PSP will not be reflected in the resource. This can be useful if "
+                           "you want to manage the customer data manually or if you have a large number of customers and want to "
+                           "avoid syncing all data."
+        }
+    ]).
 
 -author("Marc Worrell <marc@worrell.nl>").
 

@@ -245,7 +245,7 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:123
+#: zotonic_mod_paysub/src/mod_paysub.erl:156
 msgid ""
 "Data will be sent to Stripe."
 msgstr ""
@@ -604,7 +604,7 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:456
+#: zotonic_mod_paysub/src/mod_paysub.erl:489
 msgid ""
 "Payment status"
 msgstr ""
@@ -623,31 +623,31 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:422
+#: zotonic_mod_paysub/src/mod_paysub.erl:455
 msgid ""
 "Payments - Dashboard"
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:428
+#: zotonic_mod_paysub/src/mod_paysub.erl:461
 msgid ""
 "Payments - Invoices"
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:446
+#: zotonic_mod_paysub/src/mod_paysub.erl:479
 msgid ""
 "Payments - Payments"
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:440
+#: zotonic_mod_paysub/src/mod_paysub.erl:473
 msgid ""
 "Payments - Products"
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:434
+#: zotonic_mod_paysub/src/mod_paysub.erl:467
 msgid ""
 "Payments - Subscriptions"
 msgstr ""
@@ -741,7 +741,7 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:152
+#: zotonic_mod_paysub/src/mod_paysub.erl:185
 msgid ""
 "Redirecting..."
 msgstr ""
@@ -806,28 +806,28 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:109
+#: zotonic_mod_paysub/src/mod_paysub.erl:142
 msgid ""
 "Sorry, can't create a customer for this PSP."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:125
+#: zotonic_mod_paysub/src/mod_paysub.erl:158
 msgid ""
 "Sorry, can't find the customer for this PSP."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:90
-#: zotonic_mod_paysub/src/mod_paysub.erl:93
+#: zotonic_mod_paysub/src/mod_paysub.erl:123
+#: zotonic_mod_paysub/src/mod_paysub.erl:126
 msgid ""
 "Sorry, can't redirect to the customer portal."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:163
-#: zotonic_mod_paysub/src/mod_paysub.erl:174
-#: zotonic_mod_paysub/src/mod_paysub.erl:181
+#: zotonic_mod_paysub/src/mod_paysub.erl:196
+#: zotonic_mod_paysub/src/mod_paysub.erl:207
+#: zotonic_mod_paysub/src/mod_paysub.erl:214
 msgid ""
 "Sorry, something goes wrong, try again later."
 msgstr ""
@@ -842,19 +842,19 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:106
+#: zotonic_mod_paysub/src/mod_paysub.erl:139
 msgid ""
 "Sorry, something went wrong."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:192
+#: zotonic_mod_paysub/src/mod_paysub.erl:225
 msgid ""
 "Sorry, the password has already been reset."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:202
+#: zotonic_mod_paysub/src/mod_paysub.erl:235
 msgid ""
 "Sorry, this checkout could not be fetched."
 msgstr ""
@@ -866,13 +866,13 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:112
+#: zotonic_mod_paysub/src/mod_paysub.erl:145
 msgid ""
 "Sorry, you are not allowed to create a customer for this PSP."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:128
+#: zotonic_mod_paysub/src/mod_paysub.erl:161
 msgid ""
 "Sorry, you are not allowed to update customer for this PSP."
 msgstr ""
@@ -962,7 +962,7 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:228
+#: zotonic_mod_paysub/src/mod_paysub.erl:261
 msgid ""
 "The user is not a main contact of the organization."
 msgstr ""
@@ -1104,15 +1104,15 @@ msgid ""
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:231
+#: zotonic_mod_paysub/src/mod_paysub.erl:264
 msgid ""
 "You are not allowed to do this."
 msgstr ""
 ""
 
-#: zotonic_mod_paysub/src/mod_paysub.erl:80
-#: zotonic_mod_paysub/src/mod_paysub.erl:215
-#: zotonic_mod_paysub/src/mod_paysub.erl:240
+#: zotonic_mod_paysub/src/mod_paysub.erl:113
+#: zotonic_mod_paysub/src/mod_paysub.erl:248
+#: zotonic_mod_paysub/src/mod_paysub.erl:273
 msgid ""
 "You are not allowed to edit products."
 msgstr ""

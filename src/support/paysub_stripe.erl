@@ -578,9 +578,9 @@ maybe_add_custom_fields(Payload, Args) ->
                                         value => Option
                                     };
                                 (#{ <<"value">> := Value } = Opt) ->
-                                    Label = maps:get(<<"label">>, Opt, Value),
+                                    OptLabel = maps:get(<<"label">>, Opt, Value),
                                     #{
-                                        label => Label,
+                                        label => OptLabel,
                                         value => Value
                                     }
                             end,

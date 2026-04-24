@@ -556,10 +556,10 @@ maybe_add_custom_fields(Payload, Args) ->
         undefined ->
             Payload;
         CustomFields when is_list(CustomFields) ->
-            Custom = lists:map(
+            Custom = lists:filtermap(
                 fun
                     (Name) when is_binary(Name); is_atom(Name) ->
-                        #{
+                        {true, #{
                             key => Name,
                             label => #{
                                 type => <<"custom">>,
@@ -567,25 +567,34 @@ maybe_add_custom_fields(Payload, Args) ->
                             },
                             type => <<"text">>,
                             optional => true
-                        };
+                        }};
                     (#{ <<"name">> := Name, <<"options">> := Options } = F) ->
                         Label = maps:get(<<"label">>, F, Name),
                         IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),
-                        custom_field_options(Name, Label, IsRequired, Options);
+                        {true, custom_field_options(Name, Label, IsRequired, Options)};
                     (#{ name := Name, options := Options } = F) ->
                         Label = maps:get(label, F, Name),
                         IsRequired = z_convert:to_bool(maps:get(is_required, F, false)),
-                        custom_field_options(Name, Label, IsRequired, Options);
+                        {true, custom_field_options(Name, Label, IsRequired, Options)};
                     (#{ <<"name">> := Name } = F) ->
                         Label = maps:get(<<"label">>, F, Name),
                         Type = maps:get(<<"type">>, F, <<"text">>),
                         IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),
-                        custom_field_type(Name, Label, IsRequired, Type);
+                        {true, custom_field_type(Name, Label, IsRequired, Type)};
                     (#{ name := Name } = F) ->
                         Label = maps:get(label, F, Name),
                         Type = maps:get(type, F, <<"text">>),
                         IsRequired = z_convert:to_bool(maps:get(is_required, F, false)),
-                        custom_field_type(Name, Label, IsRequired, Type)
+                        {true, custom_field_type(Name, Label, IsRequired, Type)};
+                    (F) ->
+                        ?LOG_ERROR(#{
+                            in => zotonic_mod_paysub,
+                            text => <<"Invalid custom field definition, skipping">>,
+                            result => error,
+                            reason => no_name,
+                            field => F
+                        }),
+                        false
                 end,
                 CustomFields),
             Payload#{

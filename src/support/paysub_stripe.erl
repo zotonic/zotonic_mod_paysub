@@ -570,19 +570,28 @@ maybe_add_custom_fields(Payload, Args) ->
                         };
                     (#{ <<"name">> := Name, <<"options">> := Options } = F) ->
                         Label = maps:get(<<"label">>, F, Name),
-                        Options1 = lists:map(
+                        Options1 = lists:filtermap(
                             fun
-                                (Option) when is_binary(Option) ->
-                                    #{
-                                        label => Option,
-                                        value => Option
-                                    };
+                                (Option) when is_binary(Option); is_atom(Option) ->
+                                    OptBin = z_convert:to_binary(Option),
+                                    {true, #{
+                                        label => OptBin,
+                                        value => OptBin
+                                    }};
                                 (#{ <<"value">> := Value } = Opt) ->
                                     OptLabel = maps:get(<<"label">>, Opt, Value),
-                                    #{
+                                    {true, #{
                                         label => OptLabel,
                                         value => Value
-                                    }
+                                    }};
+                                (#{ value := Value } = Opt) ->
+                                    OptLabel = maps:get(label, Opt, Value),
+                                    {true, #{
+                                        label => z_convert:to_binary(OptLabel),
+                                        value => z_convert:to_binary(Value)
+                                    }};
+                                (_) ->
+                                    false
                             end,
                             Options),
                         IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),

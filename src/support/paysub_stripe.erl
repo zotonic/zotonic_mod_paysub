@@ -1,8 +1,8 @@
-%% @copyright 2022-2024 Marc Worrell
+%% @copyright 2022-2026 Marc Worrell
 %% @doc Stripe support for payments and subscriptions.
 %% @end
 
-%% Copyright 2022-2024 Marc Worrrell
+%% Copyright 2022-2026 Marc Worrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -381,17 +381,18 @@ checkout_session_create(Args, Context) ->
                         customer_email => Email
                     }
             end,
+            Payload3 = maybe_add_custom_fields(Payload2, Args),
             IsBillingAddressCollection = z_convert:to_bool(proplists:get_value(is_billing_address_collection, Args, true)),
             BaseSub = case z_convert:to_integer(proplists:get_value(trial_days, Args, 0)) of
                 N when is_integer(N), N >= 1 -> #{ trial_period_days => N };
                 _ -> #{}
             end,
-            Payload3 = case m_paysub:get_customer(stripe, SubscriberId, Context) of
+            Payload4 = case m_paysub:get_customer(stripe, SubscriberId, Context) of
                 {ok, #{
                     <<"psp_customer_id">> := CustId
                 }} when is_binary(CustId) ->
                     % Only customer or customer_email can be used.
-                    PE1 = maps:remove(customer_email, Payload2#{
+                    PE1 = maps:remove(customer_email, Payload3#{
                         customer => CustId,
                         customer_update => #{
                             address => auto,
@@ -428,17 +429,17 @@ checkout_session_create(Args, Context) ->
                             }
                     end;
                 {error, enoent} when is_integer(SubscriberId) ->
-                    PE1 = case Payload2 of
+                    PE1 = case Payload3 of
                         #{
                             customer_email := _
                         } ->
-                            Payload2;
+                            Payload3;
                         _ ->
                             case m_rsc:p_no_acl(SubscriberId, email_raw, Context) of
                                 undefined ->
-                                    Payload2;
+                                    Payload3;
                                 UserEmail ->
-                                    Payload2#{
+                                    Payload3#{
                                         customer_email => UserEmail
                                     }
                             end
@@ -474,7 +475,7 @@ checkout_session_create(Args, Context) ->
                             }
                     end;
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= payment ->
-                    PE1 = Payload2#{
+                    PE1 = Payload3#{
                         customer_creation => if_required,
                         billing_address_collection => auto,
                         invoice_creation => #{
@@ -487,7 +488,7 @@ checkout_session_create(Args, Context) ->
                     },
                     maybe_add_consent_collection(PE1, Args, true);
                 {error, enoent} when SubscriberId =:= undefined, Mode =:= subscription ->
-                    PE1 = Payload2#{
+                    PE1 = Payload3#{
                             billing_address_collection =>
                                 case IsBillingAddressCollection of
                                     true -> required;
@@ -497,14 +498,14 @@ checkout_session_create(Args, Context) ->
                         },
                     maybe_add_consent_collection(PE1, Args, true)
             end,
-            Payload4 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
-                <<>> -> Payload3;
+            Payload5 = case z_convert:to_binary(proplists:get_value(currency, Args)) of
+                <<>> -> Payload4;
                 RequestedCurrency ->
-                    Payload3#{
+                    Payload4#{
                         currency => RequestedCurrency
                     }
             end,
-            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload4, Context) of
+            case paysub_stripe_api:fetch(post, [ "checkout", "sessions" ], Payload5, Context) of
                 {ok, #{
                     <<"url">> := Url,
                     <<"id">> := PspCheckoutId,
@@ -549,6 +550,108 @@ checkout_session_create(Args, Context) ->
             }),
             Error
     end.
+
+maybe_add_custom_fields(Payload, Args) ->
+    case proplists:get_value(custom_props, Args) of
+        undefined ->
+            Payload;
+        CustomFields when is_list(CustomFields) ->
+            Custom = lists:filtermap(
+                fun
+                    (Name) when is_binary(Name); is_atom(Name) ->
+                        {true, #{
+                            key => Name,
+                            label => #{
+                                type => <<"custom">>,
+                                custom => Name
+                            },
+                            type => <<"text">>,
+                            optional => true
+                        }};
+                    (#{ <<"name">> := Name, <<"options">> := Options } = F) ->
+                        Label = maps:get(<<"label">>, F, Name),
+                        IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),
+                        {true, custom_field_options(Name, Label, IsRequired, Options)};
+                    (#{ name := Name, options := Options } = F) ->
+                        Label = maps:get(label, F, Name),
+                        IsRequired = z_convert:to_bool(maps:get(is_required, F, false)),
+                        {true, custom_field_options(Name, Label, IsRequired, Options)};
+                    (#{ <<"name">> := Name } = F) ->
+                        Label = maps:get(<<"label">>, F, Name),
+                        Type = maps:get(<<"type">>, F, <<"text">>),
+                        IsRequired = z_convert:to_bool(maps:get(<<"is_required">>, F, false)),
+                        {true, custom_field_type(Name, Label, IsRequired, Type)};
+                    (#{ name := Name } = F) ->
+                        Label = maps:get(label, F, Name),
+                        Type = maps:get(type, F, <<"text">>),
+                        IsRequired = z_convert:to_bool(maps:get(is_required, F, false)),
+                        {true, custom_field_type(Name, Label, IsRequired, Type)};
+                    (F) ->
+                        ?LOG_ERROR(#{
+                            in => zotonic_mod_paysub,
+                            text => <<"Invalid custom field definition, skipping">>,
+                            result => error,
+                            reason => no_name,
+                            field => F
+                        }),
+                        false
+                end,
+                CustomFields),
+            Payload#{
+                custom_fields => Custom
+            }
+    end.
+
+
+custom_field_type(Name, Label, IsRequired, Type) ->
+    #{
+        key => Name,
+        label => #{
+            type => <<"custom">>,
+            custom => Label
+        },
+        type => Type,
+        optional => not IsRequired
+    }.
+
+custom_field_options(Name, Label, IsRequired, Options) ->
+    Options1 = lists:filtermap(
+        fun
+            (Option) when is_binary(Option); is_atom(Option) ->
+                OptBin = z_convert:to_binary(Option),
+                {true, #{
+                    label => OptBin,
+                    value => OptBin
+                }};
+            (#{ <<"value">> := Value } = Opt) ->
+                OptLabel = maps:get(<<"label">>, Opt, Value),
+                {true, #{
+                    label => OptLabel,
+                    value => Value
+                }};
+            (#{ value := Value } = Opt) ->
+                OptLabel = maps:get(label, Opt, Value),
+                {true, #{
+                    label => z_convert:to_binary(OptLabel),
+                    value => z_convert:to_binary(Value)
+                }};
+            (_) ->
+                false
+        end,
+        Options),
+    #{
+        key => Name,
+        label => #{
+            type => <<"custom">>,
+            custom => Label
+        },
+        type => <<"dropdown">>,
+        optional => not IsRequired,
+        dropdown => #{
+            options => Options1
+        }
+    }.
+
 
 maybe_add_consent_collection(Payload, Args, Default) ->
     case proplists:get_value(consent_collection, Args) of
@@ -676,10 +779,43 @@ checkout_session_sync(Session, Context) ->
         status => Status,
         payment_status => PaymentStatus,
         currency => z_string:to_upper(Currency),
-        amount => Amount
+        amount => Amount,
+        custom_props => extract_custom_fields(Session)
     },
     m_paysub:checkout_update(stripe, CheckoutNr, Update, Context),
     ok.
+
+extract_custom_fields(#{ <<"custom_fields">> := Fields }) when is_list(Fields) ->
+    lists:foldl(
+        fun
+            (#{
+                <<"key">> := Key,
+                <<"text">> := #{
+                    <<"value">> := Value
+                }
+            }, Acc) when is_binary(Value), Value =/= <<>> ->
+                Acc#{ Key => Value };
+            (#{
+                <<"key">> := Key,
+                <<"dropdown">> := #{
+                    <<"value">> := Value
+                }
+            }, Acc) when is_binary(Value), Value =/= <<>> ->
+                Acc#{ Key => Value };
+            (#{
+                <<"key">> := Key,
+                <<"numeric">> := #{
+                    <<"value">> := Value
+                }
+            }, Acc) when is_binary(Value), Value =/= <<>> ->
+                Acc#{ Key => z_convert:to_integer(Value) };
+            (_, Acc) ->
+                Acc
+        end,
+        #{},
+        Fields);
+extract_custom_fields(#{}) ->
+    #{}.
 
 
 %% @doc Called on by controller_subscription_stripe_redirect on a successful checkout

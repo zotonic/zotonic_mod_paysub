@@ -1,4 +1,4 @@
-%% @copyright 2022-2025 Marc Worrell
+%% @copyright 2022-2026 Marc Worrell
 %% @doc Model for paid subscriptions
 %% @end
 
@@ -27,7 +27,7 @@
 %% a customer, you may choose to reopen and pay their closed invoices.
 
 
-%% Copyright 2022-2024 Marc Worrrell
+%% Copyright 2022-2026 Marc Worrell
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -1419,7 +1419,7 @@ user_payments(UserId0, Context) ->
 checkout_status(undefined, _Context) ->
     {error, enoent};
 checkout_status(CheckoutNr, Context) ->
-    Result = case z_db:qmap_props_row("
+    Result = case z_db:qmap_row("
         select status,
                payment_status,
                rsc_id,
@@ -1436,8 +1436,7 @@ checkout_status(CheckoutNr, Context) ->
                 <<"requestor_id">> := RequestorId,
                 <<"survey_id">> := SurveyId,
                 <<"survey_answer_id">> := SurveyResultId,
-                <<"is_use_maincontact">> := IsUseMainContact,
-                <<"args">> := Args
+                <<"props_json">> := Props
             } = CheckoutStatus} ->
             S = status(CheckoutStatus),
             UserId = case RequestorId of
@@ -1449,11 +1448,13 @@ checkout_status(CheckoutNr, Context) ->
                 <<"requestor_id">> => RequestorId,
                 <<"user_id">> => UserId,
                 <<"survey_id">> => SurveyId,
-                <<"survey_answer_id">> => SurveyResultId,
-                <<"is_use_maincontact">> => IsUseMainContact,
-                <<"args">> => Args
+                <<"survey_answer_id">> => SurveyResultId
             },
-            {ok, S1};
+            S2 = case is_map(Props) of
+                true -> maps:merge(Props, S1);
+                false -> S1
+            end,
+            {ok, S2};
         {error, _} = Error ->
             Error
     end,
@@ -1921,10 +1922,8 @@ sync_payment_trans(PSP, #{ psp_payment_id := PaymentId } = Payment, Context) ->
     of
         undefined ->
             Payment1 = Payment#{ psp => PSP },
-            case z_db:insert(paysub_payment, Payment1, Context) of
-                {ok, _} ->
-                    ok;
-                {error, #error{ codename = unique_violation }} ->
+            case z_db:insert(paysub_payment, Payment1, [{conflict, ignore}], Context) of
+                {ok, undefined} ->
                     Id = z_db:q1("
                         select id
                         from paysub_payment
@@ -1933,8 +1932,10 @@ sync_payment_trans(PSP, #{ psp_payment_id := PaymentId } = Payment, Context) ->
                         for update",
                         [ PSP, PaymentId ],
                         Context),
-                {ok, _} = z_db:update(paysub_payment, Id, Payment, Context),
-                ok
+                    {ok, _} = z_db:update(paysub_payment, Id, Payment, Context),
+                    ok;
+                {ok, _} ->
+                    ok
             end;
         Id ->
             {ok, _} = z_db:update(paysub_payment, Id, Payment, Context),
@@ -2202,10 +2203,9 @@ sync_customer_trans(PSP, #{ psp_customer_id := PspCustId } = Cust, Context) ->
         Context)
     of
         undefined ->
-            case z_db:insert(paysub_customer, Cust, Context) of
-                {ok, _} ->
-                    {ok, new};
-                {error, #error{ codename = unique_violation }} ->
+
+            case z_db:insert(paysub_customer, Cust, [{conflict, ignore}], Context) of
+                {ok, undefined} ->
                     Id = z_db:q1("
                         select id
                         from paysub_customer
@@ -2216,6 +2216,8 @@ sync_customer_trans(PSP, #{ psp_customer_id := PspCustId } = Cust, Context) ->
                         Context),
                     sync_customer_trans_1(Id, PSP, PspCustId, Cust, Context),
                     {ok, update};
+                {ok, _} ->
+                    {ok, new};
                 {error, _} = Error ->
                     Error
             end;
@@ -2732,10 +2734,8 @@ sync_invoice_trans(PSP, #{ psp_invoice_id := InvId } = Inv, Context) ->
     of
         undefined ->
             Inv1 = Inv#{ psp => PSP },
-            case z_db:insert(paysub_invoice, Inv1, Context) of
-                {ok, _} ->
-                    ok;
-                {error, #error{ codename = unique_violation }} ->
+            case z_db:insert(paysub_invoice, Inv1, [{conflict, ignore}], Context) of
+                {ok, undefined} ->
                     Id = z_db:q1("
                         select id
                         from paysub_invoice
@@ -2745,6 +2745,8 @@ sync_invoice_trans(PSP, #{ psp_invoice_id := InvId } = Inv, Context) ->
                         [ PSP, InvId ],
                         Context),
                     {ok, _} = z_db:update(paysub_invoice, Id, Inv, Context),
+                    ok;
+                {ok, _} ->
                     ok;
                 {error, _} = Error ->
                     Error

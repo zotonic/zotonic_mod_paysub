@@ -560,13 +560,13 @@ maybe_add_custom_fields(Payload, Args) ->
                 fun
                     (Name) when is_binary(Name); is_atom(Name) ->
                         #{
-                            <<"key">> => Name,
-                            <<"label">> => #{
-                                <<"type">> => <<"custom">>,
-                                <<"custom">> => Name
+                            key => Name,
+                            label => #{
+                                type => <<"custom">>,
+                                custom => Name
                             },
-                            <<"type">> => <<"text">>,
-                            <<"optional">> => true
+                            type => <<"text">>,
+                            optional => true
                         };
                     (#{ <<"name">> := Name, <<"options">> := Options } = F) ->
                         Label = maps:get(<<"label">>, F, Name),

@@ -43,6 +43,84 @@
 
 
 -module(m_paysub).
+-moduledoc(#{
+    zotonic_keywords => [
+        "reference", "frontend_developer", "backend_developer", "model", "api_and_integration",
+        "identity_and_accounts", "authorization_and_access_control"
+    ]
+}).
+-moduledoc("
+Access local payment and subscription records, membership state and provider
+customer portals. Database records generally use binary map keys. Template
+paths return their values through `m_get/3` as `{ok, {Value, Rest}}`; failed
+lookups can return `{error, enoent}` or `{error, eacces}`.
+
+## Common template paths
+
+| Path under `m.paysub` | Value |
+| --- | --- |
+| `is_allowed_paysub` | Administrator or `use mod_paysub` permission. |
+| `is_subscriber` / `is_subscriber[id]` | Membership of the current or specified resource, including main-contact relationships. |
+| `is_unpaid_access` | Current unpaid-access configuration. |
+| `rsc[id].subscriptions.list` / `.count` | Subscription records or count. |
+| `rsc[id].invoices.list` / `.count` | Invoice records or count. |
+| `rsc[id].payments.list` / `.count` | Payment records or count. |
+| `subscription[id]`, `invoice[id]`, `payment[id]` | One record by local numeric ID. |
+| `product[id]` | One product by local numeric ID. |
+| `products[psp]`, `prices[psp]` | Provider products or prices. |
+| `price_info[psp][price_id]` | Selected display fields for a provider price. |
+| `checkout.status[checkout_nr]` | Checkout status map. |
+| `subscriptions.states` | Supported status names. |
+| `subscriptions.user_groups`, `.psps`, `.products`, `.prices` | Subscription filter choices. |
+| `overview_by.user_group` | Administrative membership overview. |
+
+For example:
+
+```django
+{% for sub in m.paysub.rsc[id].subscriptions.list %}
+    {{ sub.status|escape }}
+{% endfor %}
+```
+
+The resource list/count paths allow a Paysub administrator, the resource's
+own user, or its current main contact. Single invoice, subscription and
+payment paths restrict non-administrators to their own linked records.
+Products and the user-group overview require Paysub management permission;
+provider product/price lists also accept `use mod_admin` permission.
+`price_info` and subscription filter choices have no equivalent management
+gate. `is_subscriber` checks resource visibility and returns false for
+unknown or invisible resources.
+
+## Checkout and customer portal
+
+`checkout.status[checkout_nr]` looks up a checkout by its checkout number;
+it does not require the current user to own the checkout. Returned fields
+include status, payment status, resource and requestor IDs and stored checkout
+properties. Treat checkout numbers as private flow identifiers.
+
+`is_customer_portal.stripe[id]` tests customer-portal availability and access.
+`customer_portal_session_url.stripe[id]` creates a provider session and returns
+its URL; omitting the ID uses the current user. This lookup performs an
+external request. `customer_url.stripe[id]` returns an administrative provider
+URL and requires both resource visibility and Paysub management permission.
+
+## Erlang interface
+
+```erlang
+m_paysub:is_subscriber(UserId, Context).
+m_paysub:user_subscriptions(UserId, Context).
+```
+
+The first call returns a boolean. The second returns `{ok, Subscriptions}`
+or an error and is a direct database helper: callers must authorize it.
+Do not assume that exported synchronization, lookup or mutation helpers
+repeat the template path ACL checks.
+
+`active_states/0` includes `incomplete`, `trialing`, `active` and `past_due`.
+`access_states/1` additionally includes `incomplete_expired` and `unpaid`
+when configured. Membership checks and group derivation use these states;
+they do not apply the end-date filtering of some administrative searches.
+").
 
 -export([
     m_get/3,

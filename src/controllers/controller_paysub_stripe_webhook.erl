@@ -17,6 +17,53 @@
 %% limitations under the License.
 
 -module(controller_paysub_stripe_webhook).
+-moduledoc(#{
+    zotonic_keywords => [
+        "reference", "backend_developer", "integrator", "controller", "api_and_integration",
+        "http", "json"
+    ]
+}).
+-moduledoc("
+Receive Stripe payment and subscription events with `POST` at
+`/paysub/stripe/webhook` (dispatch `paysub_stripe_webhook`). Generate the
+absolute endpoint URL in a template with:
+
+```django
+{% url paysub_stripe_webhook absolute_url %}
+```
+
+## Authentication
+
+Set the per-site `mod_paysub.stripe_webhook_secret` to the endpoint signing
+key. Requests need a `stripe-signature` header containing `t` and `v1`.
+The controller compares `v1` to the lowercase hexadecimal HMAC-SHA256 of
+`timestamp.raw_body`, and requires the timestamp to differ from server time
+by less than 300 seconds. It uses the raw body before JSON decoding.
+There is no user-session ACL check. Missing or invalid signatures fail
+authorization; the timestamp window does not provide event-ID deduplication.
+
+## Events
+
+The JSON body must contain `type` and the event-specific `data.object`.
+
+| Event family | Handling |
+| --- | --- |
+| `checkout.session.completed` | Complete the local checkout through the Stripe adapter. |
+| `checkout.session.async_payment_failed`, `.async_payment_succeeded`, `.expired` | Synchronize the checkout session. |
+| `invoice.created`, `.updated`, `.voided`, `.finalized`, `.paid`, `.payment_failed` | Synchronize the invoice. |
+| `invoice.deleted` | Delete the local invoice. |
+| `customer.created`, `.updated`, `.deleted` | Synchronize or delete the local customer. |
+| `customer.subscription.created`, `.updated`, `.deleted` | Synchronize the subscription. |
+| `price.*`, `product.*` | Schedule price or product synchronization. |
+| `payment_intent.*` | Synchronize the payment. |
+| `ping` | Acknowledge without synchronization. |
+
+Other events are acknowledged without updating records. Some synchronization
+is queued, so acknowledgement does not imply that every local record has
+already been refreshed. Handler results `ok` and `{ok, _}` acknowledge the
+request; `{error, _}` produces HTTP 500. Malformed JSON or missing required
+event fields are not converted into a structured validation response.
+").
 
 -author("Marc Worrell <marc@worrell.nl>").
 

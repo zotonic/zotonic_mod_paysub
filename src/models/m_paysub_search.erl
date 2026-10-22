@@ -18,6 +18,62 @@
 %% limitations under the License.
 
 -module(m_paysub_search).
+-moduledoc(#{
+    zotonic_keywords => [
+        "reference", "frontend_developer", "backend_developer", "model",
+        "search_and_discovery", "authorization_and_access_control"
+    ]
+}).
+-moduledoc("
+Provide geographic filter choices and subscription searches for Paysub.
+
+## Model paths
+
+`m.paysub_search.list.countries` returns a list of maps with `code` and
+localized `name`, sorted by name. Countries come from resource pivot fields
+of linked customers. `m.paysub_search.list.cities[country]` returns sorted
+city values for the selected country.
+
+```django
+{% for country in m.paysub_search.list.countries %}
+    {{ country.name|escape }}
+{% endfor %}
+```
+
+Both paths require `m_paysub:is_allowed_paysub/1`, otherwise they return
+`{error, eacces}`. The callback wraps successful lists as `{ok, {List, Rest}}`;
+unsupported paths return `{error, notyet}`.
+
+## Search integration
+
+`mod_paysub` exposes the named searches `paysub_subscriptions`,
+`paysub_invoices`, `paysub_payments` and `paysub_products` through `m.search`.
+For example:
+
+```django
+{% with m.search.paged[{paysub_subscriptions status=\"all_active\"}] as result %}
+    {% for sub in result %}{{ sub.status|escape }}{% endfor %}
+{% endwith %}
+```
+
+The module observer checks Paysub management permission before these searches.
+Subscriptions accept `rsc_id`, `price_id`, `product_id`, `user_group_id`,
+`psp`, `status`, `country`, `city` and `postcode`. Postcodes use a prefix match;
+country and city filters use resource pivot fields. Invoice and payment
+searches optionally restrict by `rsc_id`.
+
+The resource query terms `is_paysub_subscriber` and
+`paysub_subscription_status` filter resources by subscription state.
+`is_subscriber` is a deprecated alias for `is_paysub_subscriber`.
+The boolean subscriber term includes organization main contacts and uses
+access states without an end-date check. Status filters such as `all_active`
+and `all_access` also exclude subscriptions whose `ended_at` has passed.
+
+The exported `search_query/4` accepts a search kind, a binary-keyed query map,
+a one-based `{Offset, Limit}` and a context. It returns a `search_result`
+record. Direct search and SQL-term helpers do not enforce the management
+permission checked by the module's named-search observer.
+").
 
 -export([
     m_get/3,

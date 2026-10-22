@@ -18,6 +18,65 @@
 %% limitations under the License.
 
 -module(mod_paysub).
+-moduledoc(#{
+    zotonic_keywords => [
+        "reference", "site_administrator", "backend_developer", "module",
+        "api_and_integration", "identity_and_accounts", "authorization_and_access_control",
+        "configuration"
+    ]
+}).
+-moduledoc("
+Manage paid memberships, customers, products, prices, subscriptions, invoices
+and payments. The bundled payment-service integration uses Stripe. Local
+records support membership checks and administration without a provider
+request on every page view.
+
+## Setup
+
+Enable `mod_paysub`; its declared dependencies are `mod_authentication` and
+`mod_l10n`. Schema installation creates the payment tables and, when the
+ACL user-group category exists, the `ug_inactive_member` group.
+Configure these per-site `mod_paysub` settings:
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `stripe_api_key` | Empty | API key for Stripe requests. |
+| `stripe_webhook_secret` | Empty | Key for authenticating Stripe callbacks. |
+| `is_unpaid_access` | `false` | Also grant subscription access for `incomplete_expired` and `unpaid` states. |
+| `is_no_customer_sync` | `false` | Suppress copying provider customer billing changes back to resource fields. |
+
+Configure the provider webhook at the site's `/paysub/stripe/webhook` URL
+(dispatch `paysub_stripe_webhook`). See `controller_paysub_stripe_webhook`
+for supported events. A nonempty API key marks the Stripe integration as
+configured; this does not test connectivity or credentials.
+
+The Payments entries under the admin Modules menu provide a dashboard and
+invoice, subscription, product and payment lists. Management uses administrator
+status or `use` permission for `mod_paysub`; individual operations can also
+require resource edit permission. Fetch products and prices through the admin
+or `mod_paysub:sync_products(Context)`, then associate products with user groups.
+The direct sync function returns `ok` when Stripe is unconfigured, or the
+synchronization result when configured.
+
+## Membership and synchronization
+
+When a user context is initialized, subscription products add their associated
+user groups. Subscriptions of organizations for which the user is a
+`hasmaincontact` contact also contribute groups, as do those organizations'
+`hasusergroup` edges. If none are found, `ug_inactive_member` is added.
+Access states are `incomplete`, `trialing`, `active` and `past_due`, plus
+`incomplete_expired` and `unpaid` when `is_unpaid_access` is enabled.
+
+Provider callbacks synchronize local payment records. Resource pivot updates
+schedule billing changes toward the provider; customer notifications copy
+changed billing fields back unless `is_no_customer_sync` is enabled.
+Resource merging and subscription moves update linked customer records.
+
+Use `m_paysub` for template data, checkout status and Erlang integration.
+`m_paysub_search` supplies administrative searches and resource query terms.
+The module also supplies checkout completion/cancellation pages, survey
+payment-status columns and a subscription spreadsheet export.
+").
 
 -mod_title("Paid subscriptions").
 -mod_description("Paid subscriptions for members").

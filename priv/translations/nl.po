@@ -899,3 +899,9 @@ msgstr "kijk op {psp}"
 
 #~ msgid "Thank you for your payment!"
 #~ msgstr "Bedankt voor uw betaling!"
+
+#. Completed checkout with a zero total; free of charge, not available or unrestricted.
+#: zotonic_mod_paysub/priv/templates/_survey_paysub_checkout_status.tpl
+msgctxt "payment"
+msgid "Free"
+msgstr "Gratis"

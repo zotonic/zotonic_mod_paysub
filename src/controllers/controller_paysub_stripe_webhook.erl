@@ -194,10 +194,6 @@ handle(<<"customer.subscription.updated">>, Ps, Context) ->
     sync_subscription(Ps, Context);
 handle(<<"customer.subscription.deleted">>, Ps, Context) ->
     sync_subscription(Ps, Context);
-handle(<<"customer.", _/binary>> = Type, Ps, _Context) ->
-    ?DEBUG(Type),
-    ?DEBUG(Ps),
-    ok;
 
 handle(<<"price.", _/binary>>, _Ps, Context) ->
     paysub_stripe:schedule_sync(prices, Context),
@@ -215,7 +211,7 @@ handle(Type, _Ps, _Context) ->
         in => zotonic_mod_paysub,
         psp => stripe,
         text => <<"Unhandled Stripe event type">>,
-        result => error,
+        result => ok,
         reason => unhandled_event,
         event_type => Type
     }),

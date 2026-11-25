@@ -764,7 +764,7 @@ checkout_session_sync(SessionId, Context) when is_binary(SessionId) ->
     end;
 checkout_session_sync(Session, Context) ->
     #{
-        <<"id">> := _CheckoutId,
+        <<"id">> := CheckoutId,
         <<"customer">> := CustomerId,
         <<"status">> := Status,
         <<"payment_intent">> := PaymentId,
@@ -774,16 +774,29 @@ checkout_session_sync(Session, Context) ->
         <<"amount_total">> := Amount
     } = Session,
     Update = #{
+        psp_checkout_id => CheckoutId,
         psp_customer_id => CustomerId,
         psp_payment_id => PaymentId,
         status => Status,
         payment_status => PaymentStatus,
         currency => z_string:to_upper(Currency),
         amount => Amount,
-        custom_props => extract_custom_fields(Session)
+        custom_props => extract_custom_fields(Session),
+        discount_details => maps:with([
+            <<"amount_subtotal">>, <<"amount_total">>, <<"total_details">>, <<"discounts">>
+        ], Session)
     },
-    m_paysub:checkout_update(stripe, CheckoutNr, Update, Context),
-    ok.
+    case m_paysub:checkout_update(stripe, CheckoutNr, Update, Context) of
+        ok ->
+            % Includes async success and API/redirect synchronization. The model
+            % deduplicates completion notifications under the checkout row lock.
+            case Session of
+                #{<<"mode">> := <<"payment">>, <<"status">> := <<"complete">>} ->
+                    m_paysub:checkout_completed(stripe, CheckoutNr, Context);
+                _ -> ok
+            end;
+        {error, _} = Error -> Error
+    end.
 
 extract_custom_fields(#{ <<"custom_fields">> := Fields }) when is_list(Fields) ->
     lists:foldl(
@@ -824,8 +837,13 @@ extract_custom_fields(#{}) ->
     Session :: map(),
     Context :: z:context(),
     Reason :: term().
-checkout_session_completed(#{ <<"mode">> := <<"subscription">> } = Session, Context) ->
-    checkout_session_sync(Session, Context),
+checkout_session_completed(Session, Context) ->
+    case checkout_session_sync(Session, Context) of
+        ok -> checkout_session_completed_1(Session, Context);
+        {error, _} = Error -> Error
+    end.
+
+checkout_session_completed_1(#{ <<"mode">> := <<"subscription">> } = Session, Context) ->
     #{
         <<"customer">> := PSPCustomerId,
         <<"client_reference_id">> := CheckoutNr,
@@ -885,14 +903,8 @@ checkout_session_completed(#{ <<"mode">> := <<"subscription">> } = Session, Cont
     end,
     % 4. Provision the subscription by notifying paysub_subscription with status 'new'
     m_paysub:provision_subscription(stripe, PSPSubscriptionId, CheckoutNr, Context);
-checkout_session_completed(#{ <<"mode">> := <<"payment">> } = Session, Context) ->
-    % 1. Save the new Session
-    checkout_session_sync(Session, Context),
-    % 2. If payment complete then send notification
-    #{
-        <<"client_reference_id">> := CheckoutNr
-    } = Session,
-    m_paysub:checkout_completed(stripe, CheckoutNr, Context).
+checkout_session_completed_1(#{ <<"mode">> := <<"payment">> }, _Context) ->
+    ok.
 
 
 %% @doc Check if a Stripe API key is configured. If so then it can be assumed that Stripe
@@ -1798,7 +1810,11 @@ stripe_invoice(#{
                 currency => z_string:to_upper(ItemCurrency),
                 amount => ItemAmount,
                 psp_price_id => ItemPriceId,
-                is_prorated => IsProration
+                is_prorated => IsProration,
+                discount_details => maps:with([
+                    <<"discountable">>, <<"discounts">>, <<"discount_amounts">>,
+                    <<"pretax_credit_amounts">>
+                ], InvItem)
             }
         end,
         AllLines),
@@ -1819,7 +1835,12 @@ stripe_invoice(#{
         created => timestamp_to_datetime(Created),
         name => CustomerName,
         email => CustomerEmail,
-        items => InvItems
+        items => InvItems,
+        discount_details => maps:with([
+            <<"subtotal">>, <<"subtotal_excluding_tax">>, <<"total">>,
+            <<"total_excluding_tax">>, <<"discounts">>, <<"total_discount_amounts">>,
+            <<"total_pretax_credit_amounts">>, <<"total_taxes">>, <<"total_tax_amounts">>
+        ], Inv)
     },
     maybe_add_address(Inv, Invoice).
 

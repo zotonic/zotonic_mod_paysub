@@ -64,6 +64,43 @@ Unknown events are acknowledged without updating records. Some synchronization
 runs asynchronously, so acknowledgement does not mean all local records have
 already been refreshed. A handler returning an error produces HTTP 500.
 
+## Coupons and checkout completion
+
+Promotion codes are enabled in Stripe Checkout. Completed `no_payment_required`
+sessions count as paid without requiring a PaymentIntent. Checkout `amount` and
+invoice totals remain the provider's final amounts in minor currency units.
+`discount_details` in their JSON properties preserves Stripe's original subtotal,
+discount totals, coupon/promotion references and any expanded discount objects.
+Invoice items also retain their individual discount breakdowns. Tax and credit
+fields are preserved separately; they are not inferred to be coupon discounts.
+
+Checkout updates and `paysub_checkout_done` notifications lock the checkout row.
+Once paid, its settlement status, amount and discount evidence cannot be replaced
+by an older session snapshot. Matching paid snapshots may fill missing legacy
+coupon details and PSP identifiers; existing evidence, amounts and notification
+markers are preserved. Session identity, amount and currency must match. Expired
+checkouts cannot reopen from older open snapshots.
+A complete-but-unpaid checkout notifies once and can
+notify again on settlement, including through asynchronous payment synchronization.
+Duplicate deliveries do not repeat notifications. Notifications run inside the
+transaction; function observers returning `{error, Reason}` or raising an exception
+roll back the delivery marker for retry. PID observers retain the existing cast
+protocol, so their processing is not acknowledged by the transaction. External
+side effects in observers should still be idempotent because a process crash or a
+later observer failure can cause a transaction to be retried.
+
+Schema version 14 adds `notified_state`. Column creation and the legacy backfill
+are atomic: a failed backfill rolls back the column, allowing the upgrade to retry.
+Existing complete one-off checkouts (including unpaid completions) are treated as
+already notified, avoiding historical notification replays. Unpaid checkouts still
+notify when they settle. Re-running the upgrade preserves these markers.
+
+The coupon regression tests include optional PostgreSQL tests enabled by
+`PAYMENT_TEST_PORT`. Run those only against an isolated database: they create and
+drop the `paysub_coupon_test` schema (localhost, user `payment_test`, database
+`postgres`). They cover fresh installs, upgrades, concurrent completion deliveries,
+stale events, observer retries, and persisted discount evidence.
+
 ## Membership access
 
 When a user context is initialized, the module adds the user groups associated

@@ -1608,30 +1608,90 @@ checkout_create(PSP, UserId, Mode, Props, Context) ->
     CheckoutNr :: binary(),
     UpdateProps :: #{ atom() => term() },
     Context :: z:context(),
-    Result :: ok | {error, enoent}.
+    Result :: ok | {error, term()}.
 checkout_update(PSP, CheckoutNr, UpdateProps, Context) ->
-    case z_db:q1("
-        select id
-        from paysub_checkout
-        where psp = $1
-          and nr = $2
-        ", [ PSP, CheckoutNr ],
-        Context)
-    of
-        undefined ->
-            {error, enoent};
-        CheckoutId ->
-            case z_db:update(
-                paysub_checkout,
-                CheckoutId,
-                UpdateProps#{ modified => calendar:universal_time() },
-                Context)
-            of
-                {ok, _} -> ok;
-                {error, _} = Error -> Error
+    checkout_transaction(fun(Ctx) ->
+        case checkout_lock(PSP, CheckoutNr, Ctx) of
+            {ok, #{<<"id">> := Id} = Current} ->
+                case checkout_identity_matches(Current, UpdateProps) of
+                    false -> {error, checkout_mismatch};
+                    true ->
+                        case checkout_is_paid(Current) of
+                            true -> checkout_enrich_paid(Current, UpdateProps, Ctx);
+                            false ->
+                                Previous = maps:get(<<"status">>, Current),
+                                Status = maps:get(status, UpdateProps, Previous),
+                                case checkout_rank(Status) < checkout_rank(Previous) of
+                                    true -> ok;
+                                    false ->
+                                        {ok, _} = z_db:update(paysub_checkout, Id,
+                                            UpdateProps#{modified => calendar:universal_time()}, Ctx),
+                                        ok
+                                end
+                        end
+                end;
+            {error, _} = Error -> Error
+        end
+    end, Context).
+
+checkout_identity_matches(#{<<"psp_checkout_id">> := Existing}, #{psp_checkout_id := Incoming})
+    when is_binary(Existing) -> Existing =:= Incoming;
+checkout_identity_matches(_, _) -> true.
+
+checkout_rank(<<"complete">>) -> 2;
+checkout_rank(<<"expired">>) -> 1;
+checkout_rank(_) -> 0.
+
+%% Settlement is immutable, but legacy rows can lack coupon evidence and PSP
+%% identifiers. Enrich only a matching paid snapshot, filling missing fields.
+checkout_enrich_paid(#{<<"id">> := Id} = Current, Update, Context) ->
+    Incoming = #{<<"status">> => maps:get(status, Update, undefined),
+        <<"payment_status">> => maps:get(payment_status, Update, undefined)},
+    case checkout_is_paid(Incoming) of
+        false -> ok;
+        true ->
+            case maps:get(amount, Update, undefined) =:= maps:get(<<"amount">>, Current)
+                 andalso maps:get(currency, Update, undefined) =:= maps:get(<<"currency">>, Current) of
+                false -> {error, checkout_mismatch};
+                true ->
+                    Props = case maps:get(<<"props_json">>, Current, undefined) of
+                        P when is_map(P) -> P;
+                        _ -> #{}
+                    end,
+                    Saved = maps:get(<<"discount_details">>, Props, #{}),
+                    Details = maps:merge(maps:get(discount_details, Update, #{}), Saved),
+                    Fields = lists:foldl(fun(Key, Acc) ->
+                        case {maps:get(atom_to_binary(Key), Current, undefined), maps:get(Key, Update, undefined)} of
+                            {undefined, V} when is_binary(V) -> Acc#{Key => V};
+                            _ -> Acc
+                        end
+                    end, #{}, [psp_checkout_id, psp_customer_id, psp_payment_id]),
+                    Fields1 = case Details =:= Saved of
+                        true -> Fields;
+                        false -> Fields#{discount_details => Details}
+                    end,
+                    case map_size(Fields1) of
+                        0 -> ok;
+                        _ ->
+                            {ok, _} = z_db:update(paysub_checkout, Id, Fields1, Context),
+                            ok
+                    end
             end
     end.
 
+checkout_lock(PSP, CheckoutNr, Context) ->
+    z_db:qmap_row("select * from paysub_checkout where psp = $1 and nr = $2 for update",
+        [PSP, CheckoutNr], Context).
+
+checkout_is_paid(#{<<"status">> := <<"complete">>, <<"payment_status">> := PaymentStatus}) ->
+    PaymentStatus =:= <<"paid">> orelse PaymentStatus =:= <<"no_payment_required">>;
+checkout_is_paid(_) -> false.
+
+checkout_transaction(Fun, Context) ->
+    case z_db:transaction(Fun, Context) of
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    end.
 
 -spec checkout_completed(PSP, CheckoutNr, Context) -> Result when
     PSP :: atom() | binary(),
@@ -1639,29 +1699,40 @@ checkout_update(PSP, CheckoutNr, UpdateProps, Context) ->
     Context :: z:context(),
     Result :: ok | {error, term()}.
 checkout_completed(PSP, CheckoutNr, Context) ->
-    case checkout_status(CheckoutNr, Context) of
-        {ok, #{ <<"status">> := Status } = CheckoutStatus} ->
-            PSPCustomerId = z_db:q1("
-                select psp_customer_id
-                from paysub_checkout
-                where psp = $1
-                  and nr = $2",
-                [ PSP, CheckoutNr ],
-                Context),
-            Customer = case get_customer(PSP, PSPCustomerId, Context) of
-                {error, _} -> undefined;
-                {ok, Cust} -> Cust
-            end,
-            z_notifier:notify_sync(#paysub_checkout_done{
-                    status = Status,
-                    checkout_status = CheckoutStatus,
-                    customer = Customer
-                },
-                Context),
-            ok;
-        {error, _} = Error ->
-            Error
-    end.
+    checkout_transaction(fun(Ctx) ->
+        case checkout_lock(PSP, CheckoutNr, Ctx) of
+            {ok, #{<<"id">> := Id, <<"status">> := Status,
+                   <<"payment_status">> := PaymentStatus} = Checkout} ->
+                State = <<Status/binary, ":", PaymentStatus/binary>>,
+                case maps:get(<<"notified_state">>, Checkout, undefined) of
+                    State -> ok;
+                    _ ->
+                        {ok, CheckoutStatus} = checkout_status(CheckoutNr, Ctx),
+                        Customer = case get_customer(PSP, maps:get(<<"psp_customer_id">>, Checkout), Ctx) of
+                            {error, _} -> undefined;
+                            {ok, Cust} -> Cust
+                        end,
+                        % Mark under the same lock as notification. Observer errors
+                        % roll back the marker so Stripe can retry the delivery.
+                        {ok, _} = z_db:update(paysub_checkout, Id, #{notified_state => State}, Ctx),
+                        ok = checkout_notify(#paysub_checkout_done{
+                            status = Status, checkout_status = CheckoutStatus, customer = Customer
+                        }, Ctx),
+                        ok
+                end;
+            {error, _} = Error -> Error
+        end
+    end, Context).
+
+%% Keep notify_sync's delivery semantics (including casts to PID observers),
+%% but stop on explicit errors from function observers instead of discarding them.
+checkout_notify(Notification, Context) ->
+    lists:foreach(fun(Observer) ->
+        case zotonic_notifier_worker:notify_observer(Notification, Observer, false, Context) of
+            {error, Reason} -> throw({rollback, {checkout_observer, Reason}});
+            _ -> ok
+        end
+    end, z_notifier:get_observers(Notification, Context)).
 
 -spec is_survey_checkout(SurveyId, Context) -> boolean() when
     SurveyId :: m_rsc:resource_id(),

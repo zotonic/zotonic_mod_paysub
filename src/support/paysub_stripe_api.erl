@@ -27,6 +27,7 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -define(STRIPE_API_URL, "https://api.stripe.com/v1/").
+%% Explicit Checkout API contract, also used by mod_payment_stripe.
 -define(STRIPE_API_VERSION, <<"2025-09-30.clover">>).
 
 fetch(Method, [ P | _ ] = Path, Payload, Context) when is_list(P); is_binary(P) ->

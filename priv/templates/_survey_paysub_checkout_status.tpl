@@ -8,7 +8,9 @@
     {% if checkout.status == 'open' %}
         <span class="label label-default">{_ Open _}</span>
     {% elseif checkout.status == 'complete' %}
-        {% if checkout.payment_status == 'paid' %}
+        {% if checkout.amount == 0 and (checkout.payment_status == 'paid' or checkout.payment_status == 'no_payment_required') %}
+            <span class="label label-success">{% trans "Free" msgctxt="payment" %}</span>
+        {% elseif checkout.payment_status == 'paid' %}
             <span class="label label-success">{_ Paid _}</span>
         {% elseif checkout.payment_status == 'no_payment_required' %}
             <span class="label label-success">{_ No payment required _}</span>
@@ -30,7 +32,9 @@
     {% if checkout.status == 'open' %}
         {_ Open _}
     {% elseif checkout.status == 'complete' %}
-        {% if checkout.payment_status == 'paid' %}
+        {% if checkout.amount == 0 and (checkout.payment_status == 'paid' or checkout.payment_status == 'no_payment_required') %}
+            {% trans "Free" msgctxt="payment" %}
+        {% elseif checkout.payment_status == 'paid' %}
             {_ Paid _}
         {% elseif checkout.payment_status == 'no_payment_required' %}
             {_ No payment required _}

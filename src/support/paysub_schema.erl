@@ -30,6 +30,7 @@ install(Context) ->
             z_db:flush(Context),
             ok;
         true ->
+            ok = install_checkout_notifications(Context),
             case z_db:table_exists(paysub_payment, Context) of
                 false ->
                     [] = z_db:q("
@@ -209,6 +210,34 @@ install(Context) ->
             end
     end.
 
+%% DDL and legacy backfill must commit together. Otherwise a failed backfill
+%% leaves a column that makes the next upgrade skip historical deduplication.
+install_checkout_notifications(Context) ->
+    case z_db:column_exists(paysub_checkout, notified_state, Context) of
+        true -> ok;
+        false ->
+            Result = z_db:transaction(fun(Ctx) ->
+                z_db:q("lock table paysub_checkout in access exclusive mode", Ctx),
+                z_db:flush(Ctx),
+                case z_db:column_exists(paysub_checkout, notified_state, Ctx) of
+                    true -> ok;
+                    false ->
+                        [] = z_db:q("alter table paysub_checkout add column notified_state varchar(64)", Ctx),
+                        % The old completion handler also notified unpaid orders.
+                        N = z_db:q("update paysub_checkout
+                            set notified_state = status || ':' || payment_status
+                            where mode = 'payment' and status = 'complete'", Ctx),
+                        true = is_integer(N),
+                        ok
+                end
+            end, Context),
+            z_db:flush(Context),
+            case Result of
+                {rollback, Reason} -> {error, Reason};
+                Other -> Other
+            end
+    end.
+
 install_tables(Context) ->
     [] = z_db:q("
         create table paysub_checkout (
@@ -225,6 +254,7 @@ install_tables(Context) ->
             mode character varying(32) not null,
             status character varying(32) not null default 'open'::character varying,
             payment_status character varying(32) not null default 'open'::character varying,
+            notified_state character varying(64),
             currency character varying(16),
             amount integer,
             props_json jsonb,

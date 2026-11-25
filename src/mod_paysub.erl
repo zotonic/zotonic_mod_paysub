@@ -82,7 +82,7 @@ payment-status columns and a subscription spreadsheet export.
 -mod_description("Paid subscriptions for members").
 -mod_author("Marc Worrell <marc@worrell.nl>").
 -mod_depends([ mod_authentication, mod_l10n ]).
--mod_schema(13).
+-mod_schema(14).
 -mod_prio(500).
 
 -mod_config([

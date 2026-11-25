@@ -44,7 +44,10 @@
 %% of 'open', 'complete' or 'expired'. In the checkout_status can be checked
 %% if the checkout is paid, which user, and the args passed to the checkout
 %% creation.
-%% Called with 'notify_sync'.
+%% Delivered inside the checkout transaction with notify_sync semantics: function
+%% observers are called synchronously and PID observers receive a cast. Function
+%% errors (returned or raised) roll back the delivery marker for retry. Unpaid
+%% completion and subsequent settlement each notify once.
 -record(paysub_checkout_done, {
     status :: binary(),
     customer :: m_paysub:customer(),

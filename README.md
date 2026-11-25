@@ -187,6 +187,27 @@ columns, resource-merge handling, and subscription moves between resources.
 Resource pivot updates schedule billing changes toward Stripe; customer events
 copy changed billing fields back unless `is_no_customer_sync` is enabled.
 
+## Tests and CI
+
+GitHub Actions builds the module in Zotonic master on OTP 28 with PostgreSQL 16,
+runs all paysub EUnit tests in the live test sandbox, then runs xref and Dialyzer.
+The tests use mocked Stripe requests; no Stripe credentials are needed.
+
+After building the Zotonic umbrella with `make`, run from its root:
+
+```sh
+PAYMENT_TEST_HOST=127.0.0.1 PAYMENT_TEST_PORT=5432 \
+PAYMENT_TEST_USER=zotonic PAYMENT_TEST_PASSWORD=zotonic \
+PAYMENT_TEST_DATABASE=zotonic \
+apps_user/zotonic_mod_paysub/test/run-ci.sh
+```
+
+Use a disposable test database. Configure the Zotonic test sandbox's database
+separately through the normal Zotonic configuration (`ZOTONIC_DBHOST` in CI).
+The database regression suite creates and drops its own `paysub_coupon_test`
+schema; the live sandbox recreates `testsandbox`. The runner requires
+`PAYMENT_TEST_PORT` to prevent accidental skipping of database regressions.
+
 ## Source reference
 
 - [Module setup and observers](src/mod_paysub.erl)

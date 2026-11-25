@@ -2,6 +2,7 @@
 %% @doc Stripe coupon evidence, free checkout and synchronization regressions.
 -module(paysub_coupon_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("zotonic_core/include/zotonic.hrl").
 -export([session/1, invoice/1]).
 
 checkout_test() ->
@@ -15,13 +16,13 @@ checkout_test() ->
                     <<"total_details">>, <<"discounts">>], S), maps:get(discount_details, U)), ok
             end),
             meck:expect(m_paysub, checkout_completed, fun(stripe, <<"coupon">>, _) -> ok end),
-            ?assertEqual(ok, paysub_stripe:checkout_session_completed(S, test)),
+            ?assertEqual(ok, paysub_stripe:checkout_session_completed(S, #context{})),
             % The asynchronous/API sync path also attempts the guarded notification.
-            ?assertEqual(ok, paysub_stripe:checkout_session_sync(S, test))
+            ?assertEqual(ok, paysub_stripe:checkout_session_sync(S, #context{}))
         end, [2500, 5000]),
         meck:reset(m_paysub),
         meck:expect(m_paysub, checkout_update, fun(_, _, _, _) -> {error, enoent} end),
-        ?assertEqual({error, enoent}, paysub_stripe:checkout_session_completed(session(5000), test)),
+        ?assertEqual({error, enoent}, paysub_stripe:checkout_session_completed(session(5000), #context{})),
         ?assertNot(meck:called(m_paysub, checkout_completed, '_'))
     after meck:unload(m_paysub) end.
 
@@ -40,7 +41,7 @@ invoice_test() ->
                 ?assertEqual([#{<<"amount">> => Discount}], maps:get(<<"discount_amounts">>, maps:get(discount_details, Line))),
                 ok
             end),
-            ?assertEqual(ok, paysub_stripe:sync_invoice(I, test))
+            ?assertEqual(ok, paysub_stripe:sync_invoice(I, #context{}))
         end, [2500, 5000])
     after meck:unload(m_paysub) end.
 

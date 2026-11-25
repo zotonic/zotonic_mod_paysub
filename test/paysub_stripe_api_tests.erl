@@ -2,6 +2,7 @@
 %% @doc Ensure requests do not depend on the Stripe account's API version.
 -module(paysub_stripe_api_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("zotonic_core/include/zotonic.hrl").
 
 api_version_test() ->
     meck:new([m_config, z_fetch], [passthrough, no_link]),
@@ -14,7 +15,7 @@ api_version_test() ->
             {ok, #{}}
         end),
         ?assertEqual({ok, #{}}, paysub_stripe_api:fetch(
-            get, [<<"checkout">>, <<"sessions">>], undefined, test_context))
+            get, [<<"checkout">>, <<"sessions">>], undefined, #context{}))
     after
         meck:unload([m_config, z_fetch])
     end.
